@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -15,11 +15,17 @@ import {
   ListOrdered,
   Quote,
   Minus,
+  Image,
 } from 'lucide-react';
 
 interface MarkdownEditorProps {
   value?: string;
   onChange?: (value: string) => void;
+  onAttach?: (file: File) => void;
+  attachmentCount?: number;
+  attachmentFlashKey?: number;
+  animatePill?: boolean;
+  onToggleAttachmentTray?: () => void;
   placeholder?: string;
   minHeight?: number;
 }
@@ -156,6 +162,45 @@ const Divider = styled.div`
   margin: 4px 4px;
 `;
 
+const AttachmentPill = styled.button<{ $animated: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: ${({ theme }) => theme.fonts.sans};
+  background: ${({ theme }) => theme.colors.bg.surface};
+  border: 1px solid ${({ theme }) => theme.colors.border.default};
+  border-radius: 999px;
+  color: ${({ theme }) => theme.colors.text.secondary};
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all ${({ theme }) => theme.transitions.fast};
+
+  /* Plays once on mount — NoteEditor remounts this via key on each new attachment */
+  @keyframes pillGlow {
+    0% {
+      background: ${({ theme }) => theme.colors.accent.subtle};
+      border-color: ${({ theme }) => theme.colors.accent.main};
+      box-shadow: 0 0 0 3px ${({ theme }) => theme.colors.accent.subtle};
+      color: ${({ theme }) => theme.colors.accent.main};
+    }
+    100% {
+      background: ${({ theme }) => theme.colors.bg.surface};
+      border-color: ${({ theme }) => theme.colors.border.default};
+      box-shadow: none;
+      color: ${({ theme }) => theme.colors.text.secondary};
+    }
+  }
+  animation: ${({ $animated }) => $animated ? 'pillGlow 1.1s ease-out' : 'none'};
+
+  &:hover {
+    background: ${({ theme }) => theme.colors.bg.surfaceHover};
+    border-color: ${({ theme }) => theme.colors.border.strong};
+    color: ${({ theme }) => theme.colors.text.primary};
+  }
+`;
+
 const EditorContent_ = styled(EditorContent)`
   flex: 1;
   overflow-y: auto;
@@ -256,11 +301,32 @@ const EditorContent_ = styled(EditorContent)`
 export function MarkdownEditor({
   value,
   onChange,
+  onAttach,
+  attachmentCount = 0,
+  attachmentFlashKey = 0,
+  animatePill = false,
+  onToggleAttachmentTray,
   placeholder = 'Write your notes here...',
   minHeight = 80,
 }: MarkdownEditorProps) {
   const isUpdatingRef = useRef(false);
   const lastValueRef = useRef(value);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAttachClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        onAttach?.(file);
+        e.target.value = '';
+      }
+    },
+    [onAttach]
+  );
 
   const editor = useEditor({
     extensions: [
@@ -369,7 +435,28 @@ export function MarkdownEditor({
         >
           <Minus />
         </ToolbarButton>
+        <Divider />
+        <ToolbarButton title="Attach Image" onClick={handleAttachClick}>
+          <Image />
+        </ToolbarButton>
+        {attachmentCount > 0 && (
+          <AttachmentPill
+            key={attachmentFlashKey}
+            $animated={animatePill}
+            onClick={onToggleAttachmentTray}
+            title="View attached images"
+          >
+            {attachmentCount} {attachmentCount === 1 ? 'Image' : 'Images'}
+          </AttachmentPill>
+        )}
       </Toolbar>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
     </EditorWrapper>
   );
 }
