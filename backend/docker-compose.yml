@@ -9,12 +9,28 @@ services:
     environment:
       - MONGO_INITDB_DATABASE=dna
     restart: unless-stopped
+    networks:
+      - dna-network
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+  redis:
+    image: redis:7-alpine
+    container_name: dna-redis
+    command: redis-server --requirepass dna-redis-changeme --maxmemory 256mb --maxmemory-policy allkeys-lru --save "" --appendonly no
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - dna-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "dna-redis-changeme", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   api:
     build:
@@ -42,7 +58,10 @@ services:
       - LLM_PROVIDER=openai
     depends_on:
       - mongo
+      - redis
     restart: unless-stopped
+    networks:
+      - dna-network
     healthcheck:
       # Use Python instead of curl: on some Docker Desktop setups the curl
       # binary hits "input/output error" on exec while the app is fine.
@@ -60,3 +79,7 @@ services:
 
 volumes:
   mongo_data:
+
+networks:
+  dna-network:
+    driver: bridge

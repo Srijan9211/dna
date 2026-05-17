@@ -1,5 +1,15 @@
+"""Production tracking provider base and factory.
+
+Key change vs. 3-hour solution
+-------------------------------
+``get_prodtrack_provider(user_token, session_id)`` now accepts both a SG
+session token AND the user's session_id.  The session_id is used by
+``ShotgridProvider`` to retrieve a pooled connection from
+``ShotGridConnectionPool`` instead of opening a new TCP connection per request.
+"""
+
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from dna.models.entity import EntityBase, Playlist, Project, User, Version
@@ -7,7 +17,6 @@ if TYPE_CHECKING:
 
 class UserNotFoundError(Exception):
     """Raised when a user is not found in the production tracking system."""
-
     pass
 
 
@@ -16,202 +25,103 @@ class ProdtrackProviderBase:
         pass
 
     def _get_object_type(self, object_type: str) -> type["EntityBase"]:
-        """Get the model class from the entity type string."""
         from dna.models.entity import ENTITY_MODELS, EntityBase
-
         return ENTITY_MODELS.get(object_type, EntityBase)
 
-    def get_entity(
-        self, entity_type: str, entity_id: int, resolve_links: bool = True
-    ) -> "EntityBase":
-        """Get an entity by its ID.
-
-        Args:
-            entity_type: The type of entity to fetch
-            entity_id: The ID of the entity
-            resolve_links: If True, recursively fetch linked entities.
-                If False, only include shallow links with id/name.
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
+    def get_entity(self, entity_type: str, entity_id: int, resolve_links: bool = True) -> "EntityBase":
+        raise NotImplementedError
 
     def add_entity(self, entity_type: str, entity: "EntityBase") -> "EntityBase":
-        """Add an entity to the production tracking system."""
-        raise NotImplementedError("Subclasses must implement this method.")
+        raise NotImplementedError
 
-    def find(
-        self, entity_type: str, filters: list[dict[str, Any]], limit: int = 0
-    ) -> list["EntityBase"]:
-        """Find entities matching the given filters.
+    def find(self, entity_type: str, filters: list[dict[str, Any]], limit: int = 0) -> list["EntityBase"]:
+        raise NotImplementedError
 
-        Args:
-            entity_type: The DNA entity type to search for (e.g., 'shot', 'version')
-            filters: List of filter conditions in DNA format
-            limit: Maximum number of entities to return. Defaults to 0 (no limit).
-
-        Returns:
-            List of matching entities
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
-
-    def search(
-        self,
-        query: str,
-        entity_types: list[str],
-        project_id: int | None = None,
-        limit: int = 10,
-    ) -> list[dict[str, Any]]:
-        """Search for entities across multiple entity types.
-
-        Args:
-            query: Text to search for (searches name field)
-            entity_types: List of entity types to search (e.g., ['user', 'shot', 'asset'])
-            project_id: Optional project ID to scope non-user entities
-            limit: Maximum results per entity type
-
-        Returns:
-            List of lightweight entity representations with type, id, name, and
-            type-specific fields (email for users, description for shots/assets/versions)
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
+    def search(self, query: str, entity_types: list[str], project_id: int | None = None, limit: int = 10) -> list[dict[str, Any]]:
+        raise NotImplementedError
 
     def get_user_by_email(self, user_email: str) -> "User":
-        """Get a user by their email address.
-
-        Args:
-            user_email: The email address of the user
-
-        Returns:
-            User entity with name, email, and login
-
-        Raises:
-            ValueError: If user is not found
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
+        raise NotImplementedError
 
     def get_projects_for_user(self, user_email: str) -> list["Project"]:
-        """Get projects accessible by a user.
-
-        Args:
-            user_email: The email address of the user
-
-        Returns:
-            List of Project entities the user has access to
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
+        raise NotImplementedError
 
     def get_playlists_for_project(self, project_id: int) -> list["Playlist"]:
-        """Get playlists for a project.
-
-        Args:
-            project_id: The ID of the project
-
-        Returns:
-            List of Playlist entities for the project
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
+        raise NotImplementedError
 
     def get_versions_for_playlist(self, playlist_id: int) -> list["Version"]:
-        """Get versions for a playlist.
+        raise NotImplementedError
 
-        Args:
-            playlist_id: The ID of the playlist
+    def get_version_statuses(self, project_id: int | None = None) -> list[dict[str, str]]:
+        raise NotImplementedError
 
-        Returns:
-            List of Version entities in the playlist
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
-
-    def get_version_statuses(
-        self, project_id: int | None = None
-    ) -> list[dict[str, str]]:
-        """Get valid status values for Versions.
-
-        Args:
-            project_id: Optional project ID to scope status values
-
-        Returns:
-            List of status dicts with 'code' and 'name' keys
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
-
-    def publish_note(
-        self,
-        version_id: int,
-        content: str,
-        subject: str,
-        to_users: list[int],
-        cc_users: list[int],
-        links: list["EntityBase"],
-        author_email: str | None = None,
-        version_status: str | None = None,
-    ) -> int:
-        """Publish a note to the production tracking system.
-
-        Args:
-            version_id: The ID of the version (or other entity) to link to
-            content: Note content
-            subject: Note subject
-            to_users: List of user IDs to address
-            cc_users: List of user IDs to CC
-            links: List of additional entities to link
-            author_email: Optional email of the author. If provided, the note
-                should be created on behalf of this user.
-            version_status: Optional status code to set on the version.
-
-        Returns:
-            The ID of the created note
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
+    def publish_note(self, version_id: int, content: str, subject: str, to_users: list[int], cc_users: list[int], links: list["EntityBase"], author_email: str | None = None, version_status: str | None = None) -> int:
+        raise NotImplementedError
 
     def update_version_status(self, version_id: int, status: str) -> bool:
-        """Update the status of a version without publishing a note.
+        raise NotImplementedError
 
-        Args:
-            version_id: The ID of the version to update
-            status: The status code to set
-
-        Returns:
-            True if the update succeeded, False otherwise
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
-
-    def attach_file_to_note(
-        self, note_id: int, file_path: str, display_name: str
-    ) -> bool:
-        """Upload a local file as an attachment on an existing note.
-
-        Args:
-            note_id: The ID of the note to attach the file to
-            file_path: Absolute path to the local file
-            display_name: Filename to display in the tracking system
-
-        Returns:
-            True if upload succeeded, False otherwise
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
+    def attach_file_to_note(self, note_id: int, file_path: str, display_name: str) -> bool:
+        raise NotImplementedError
 
 
-def get_prodtrack_provider() -> ProdtrackProviderBase:
-    """Get the production tracking provider."""
+def get_prodtrack_provider(
+    user_token: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> ProdtrackProviderBase:
+    """Get the production tracking provider.
+
+    Args:
+        user_token:  ShotGrid session token from the user's Redis session.
+                     When provided, queries run as this user and ShotGrid
+                     enforces their native permissions.
+        session_id:  The user's DNA session ID.  Used to retrieve a pooled
+                     SG connection from ShotGridConnectionPool, avoiding a
+                     new TCP handshake per request.
+
+    Returns:
+        Configured ProdtrackProviderBase instance.
+
+    Raises:
+        ValueError: Unknown provider or missing credentials.
+    """
     provider_type = os.getenv("PRODTRACK_PROVIDER", "shotgrid")
 
     if provider_type == "mock":
         from dna.prodtrack_providers.mock_provider import MockProdtrackProvider
-
         return MockProdtrackProvider()
 
     if provider_type == "shotgrid":
         sg_url = os.getenv("SHOTGRID_URL")
-        sg_script = os.getenv("SHOTGRID_SCRIPT_NAME")
-        sg_key = os.getenv("SHOTGRID_API_KEY")
-        if not all([sg_url, sg_script, sg_key]):
+        if not sg_url:
             raise ValueError(
-                "ShotGrid credentials not provided. Set SHOTGRID_URL, "
-                "SHOTGRID_SCRIPT_NAME, and SHOTGRID_API_KEY, or use "
-                "PRODTRACK_PROVIDER=mock for the mock provider."
+                "SHOTGRID_URL is required. Use PRODTRACK_PROVIDER=mock for local dev."
             )
         from dna.prodtrack_providers.shotgrid import ShotgridProvider
 
-        return ShotgridProvider()
+        if user_token:
+            # user_token = username, session_id links to Redis session with password
+            # This gives a real user-scoped connection with native SG permissions
+            from dna.auth.session_store import get_session_store
+            store = get_session_store()
+            session = store.get_session(session_id) if session_id else None
+            if session and session.sg_password:
+                return ShotgridProvider(
+                    login=session.sg_token,        # username
+                    password=session.sg_password,  # legacy password
+                    session_id=session_id,
+                )
+            # Fallback to sudo if no password stored
+            return ShotgridProvider(sudo_user=user_token, session_id=session_id)
+        else:
+            # Script-auth fallback: background jobs / non-SG-SSO auth providers.
+            sg_script = os.getenv("SHOTGRID_SCRIPT_NAME")
+            sg_key = os.getenv("SHOTGRID_API_KEY")
+            if not all([sg_script, sg_key]):
+                raise ValueError(
+                    "Script credentials missing. Set SHOTGRID_SCRIPT_NAME and "
+                    "SHOTGRID_API_KEY, or use PRODTRACK_PROVIDER=mock."
+                )
+            return ShotgridProvider()
 
-    raise ValueError(f"Unknown production tracking provider: {provider_type}")
+    raise ValueError(f"Unknown PRODTRACK_PROVIDER: '{provider_type}'. Valid: mock, shotgrid.")
