@@ -82,15 +82,51 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
     apiHandler.setUser(null);
   }, []);
 
-  // ── Popup detection: relay auth params to parent window then close ─── //
-  //
+  // ── Popup detection ─────────────────────────────────────────────────── //
   // When ShotGrid redirects back to /auth/callback?code=...&state=..., the
-  // React app loads inside the popup window.  We detect this by checking
-  // window.opener — if it exists, we're in the popup, not the main tab.
-  //
-  // Instead of completing the backend auth call here (the session should live
-  // in the parent tab), we relay the URL params via postMessage and close.
+  // React app loads inside the popup window.  We detect this via window.opener.
   const isInPopup = !!(window.opener && !window.opener.closed);
+
+  // ── SSO callback handler ─────────────────────────────────────────────── //
+  // IMPORTANT: defined here (before the useEffect that depends on it) to
+  // avoid a ReferenceError from accessing a const before initialisation.
+
+  const handleSsoCallback = useCallback(async (
+    sessionToken: string | null,
+    code: string | null,
+    state: string | null,
+  ) => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (sessionToken) params.set('session_token', sessionToken);
+      if (code) params.set('code', code);
+      if (state) params.set('state', state);
+
+      const res = await fetch(`${apiBase}/auth/callback?${params.toString()}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'SSO callback failed');
+      }
+      const data = await res.json();
+      persist(data.access_token, {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.name,
+        shotgrid_user_id: data.user.shotgrid_user_id,
+        auth_mode: 'sso',
+      });
+      // Remove session_token / code from browser URL — never leave tokens in history
+      window.history.replaceState({}, '', window.location.pathname);
+    } catch (err) {
+      console.error('[ShotGridAuth] SSO callback error:', err);
+      clear();
+    } finally {
+      setIsLoading(false);
+    }
+  }, [apiBase, persist, clear]);
+
+  // ── Popup relay: send auth params to parent then close ───────────────── //
 
   useEffect(() => {
     if (!isInPopup) return;
@@ -101,25 +137,21 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
     const state = urlParams.get('state');
 
     if (sessionToken || code) {
-      // Send auth params to the parent DNA tab
       window.opener.postMessage(
         { type: 'dna_sso_callback', sessionToken, code, state },
         window.location.origin,
       );
-      // Close the popup — the parent tab takes it from here
       window.close();
     }
-  // Run once on mount — URL params don't change
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Listen for popup postMessage (parent window only) ────────────────── //
 
   useEffect(() => {
-    if (isInPopup) return; // Popup doesn't need to listen to itself
+    if (isInPopup) return;
 
     const handlePopupMessage = (event: MessageEvent) => {
-      // Only accept messages from the same origin (security)
       if (event.origin !== window.location.origin) return;
       if (event.data?.type !== 'dna_sso_callback') return;
 
@@ -185,54 +217,6 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // ── SSO callback handler ─────────────────────────────────────────────── //
-
-  /**
-   * Complete the SSO login flow after ShotGrid redirects back to the app.
-   *
-   * Handles two callback formats:
-   *   • ?session_token=<token>&state=<csrf>  — ShotGrid-native / AMI redirect
-   *   • ?code=<auth_code>&state=<csrf>       — OAuth2 authorization_code grant
-   *
-   * Sends both params to GET /auth/callback on the backend, which exchanges
-   * them for a DNA JWT.  Cleans up the URL afterwards so the tokens don't
-   * remain in the browser history.
-   */
-  const handleSsoCallback = useCallback(async (
-    sessionToken: string | null,
-    code: string | null,
-    state: string | null,
-  ) => {
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (sessionToken) params.set('session_token', sessionToken);
-      if (code) params.set('code', code);
-      if (state) params.set('state', state);
-
-      const res = await fetch(`${apiBase}/auth/callback?${params.toString()}`);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'SSO callback failed');
-      }
-      const data = await res.json();
-      persist(data.access_token, {
-        id: data.user.id,
-        email: data.user.email,
-        name: data.user.name,
-        shotgrid_user_id: data.user.shotgrid_user_id,
-        auth_mode: 'sso',
-      });
-      // Remove session_token / code from browser URL — never leave tokens in history
-      window.history.replaceState({}, '', window.location.pathname);
-    } catch (err) {
-      console.error('[ShotGridAuth] SSO callback error:', err);
-      clear();
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiBase, persist, clear]);
 
   // ── PAT sign-in ──────────────────────────────────────────────────────── //
 
