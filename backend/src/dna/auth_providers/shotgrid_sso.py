@@ -288,7 +288,7 @@ class ShotGridSSOProvider(AuthProviderBase):
         from urllib.parse import urlencode
 
         state = secrets.token_urlsafe(32)
-        callback_url = os.getenv("AUTH_CALLBACK_URL", "http://localhost:8080")
+        callback_url = os.getenv("AUTH_CALLBACK_URL", "http://localhost:8080/auth/callback")
         self._sessions.store_oauth_state(state)
         sg_url = os.getenv("SHOTGRID_URL", "").rstrip("/")
         params = urlencode({
