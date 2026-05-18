@@ -193,30 +193,15 @@ class SessionStore:
     def _state_key(self, state: str) -> str:
         return f"{self._STATE_PREFIX}:{state}"
 
-    def store_oauth_state(self, state: str, oauth_state: OAuthState) -> None:
-        """Persist an OAuth2 CSRF state token.
+    def store_oauth_state(self, state: str) -> None:
+        """Persist a CSRF state token (presence flag only)."""
+        self._client.setex(self._state_key(state), self.state_ttl, "1")
 
-        Args:
-            state:       The random state string included in the auth URL.
-            oauth_state: Associated data (code_verifier, redirect_uri).
-        """
-        self._client.setex(self._state_key(state), self.state_ttl, oauth_state.to_redis())
-
-    def consume_oauth_state(self, state: str) -> Optional[OAuthState]:
-        """Retrieve AND delete an OAuth2 state token (one-time use).
-
-        Returns None if the state does not exist or has expired (replay attempt).
-        Deletion is atomic via a pipeline to prevent race conditions.
-        """
+    def consume_oauth_state(self, state: str) -> bool:
+        """Consume a CSRF state token — returns True if it existed, False otherwise."""
         key = self._state_key(state)
-        # Atomic GETDEL: get the value and delete in one round-trip (Redis ≥ 6.2)
         raw = self._client.getdel(key)
-        if raw is None:
-            return None
-        try:
-            return OAuthState.from_redis(raw)
-        except (KeyError, json.JSONDecodeError, TypeError):
-            return None
+        return raw is not None
 
 
 # ── Singleton factory ─────────────────────────────────────────────────────────

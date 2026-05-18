@@ -504,13 +504,65 @@ async def auth_login(body: LoginRequest, auth_provider: AuthProviderDep):
         raise HTTPException(status_code=401, detail=str(exc))
 
 
-@app.get("/auth/callback", tags=["Auth"], summary="OAuth2 SSO callback (not applicable)")
-async def auth_callback(code: Optional[str] = None, state: Optional[str] = None):
-    """Not applicable — Autodesk Identity tokens cannot be used with ShotGrid as of 2026."""
-    raise HTTPException(
-        status_code=501,
-        detail="SSO callback not implemented. Use POST /auth/ami-callback or POST /auth/login.",
-    )
+@app.get("/auth/callback", tags=["Auth"], summary="ShotGrid SSO callback")
+async def auth_callback(
+    session_token: Optional[str] = None,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    auth_provider: AuthProviderDep = None,
+):
+    """Complete the ShotGrid SSO login flow.
+
+    Called when ShotGrid redirects back to AUTH_CALLBACK_URL after the user
+    authenticates.  Two possible callback formats:
+
+    * ``?session_token=<token>&state=<csrf>``  — ShotGrid-native session grant
+    * ``?code=<auth_code>&state=<csrf>``       — OAuth2 authorization code grant
+      (requires ShotGrid OAuth2 client registration; Tier-3 future path)
+
+    On success, returns a DNA JWT + user info that the frontend stores in
+    sessionStorage.  The frontend's ``ShotGridAuthContext.useEffect`` detects
+    these query params in the URL on mount and calls this endpoint automatically.
+    """
+    if auth_provider is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Authentication is disabled (AUTH_PROVIDER=none).",
+        )
+    try:
+        from dna.auth_providers.shotgrid_sso import ShotGridSSOProvider
+        if not isinstance(auth_provider, ShotGridSSOProvider):
+            raise HTTPException(
+                status_code=400,
+                detail="SSO callback requires AUTH_PROVIDER=shotgrid.",
+            )
+
+        # ── Path A: session_token grant (ShotGrid-native SSO / AMI redirect) ──
+        if session_token:
+            return auth_provider.handle_sg_sso_callback(
+                session_token=session_token, state=state
+            )
+
+        # ── Path B: authorization_code grant (future OAuth2 flow) ─────────────
+        if code:
+            raise HTTPException(
+                status_code=501,
+                detail=(
+                    "OAuth2 authorization_code grant is not yet implemented. "
+                    "Register DNA as a ShotGrid OAuth2 client and set "
+                    "SHOTGRID_CLIENT_ID / SHOTGRID_CLIENT_SECRET to enable this path."
+                ),
+            )
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "SSO callback received no usable parameters. "
+                "Expected ?session_token=... or ?code=... in the callback URL."
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
 
 
 @app.post("/auth/refresh", tags=["Auth"], summary="Refresh access token")

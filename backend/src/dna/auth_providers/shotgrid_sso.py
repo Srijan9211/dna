@@ -214,39 +214,90 @@ class ShotGridSSOProvider(AuthProviderBase):
     # ── Login info (mode detection for frontend) ─────────────────────── #
 
     def get_login_info(self) -> dict:
-        """Return the configured auth mode so the frontend can render the correct UI.
+        """Return the configured auth mode so the frontend renders the correct UI.
+
+        Mode selection:
+
+        ``pat``  (default)
+            Standalone username + ShotGrid Legacy Password form.
+            Works everywhere; no OAuth2 client registration required.
+
+        ``sso``
+            Browser-redirect OAuth2 flow.  Two sub-paths depending on env vars:
+
+            a) ``SHOTGRID_CLIENT_ID`` is set  →  ShotGrid authorization_code grant
+               Redirects to ``<sg_url>/api/v1/auth/authorize`` (ShotGrid's own
+               OAuth2 server).  Requires the DNA app to be registered as an
+               OAuth2 client in the ShotGrid site (Admin → API Clients) and the
+               callback URL whitelisted.
+
+            b) No ``SHOTGRID_CLIENT_ID``  →  falls back to ``pat`` mode with a
+               warning.  The old ``<sg_url>/auth/login?redirect_uri=...`` approach
+               does NOT work: ShotGrid's web login page is not an OAuth2
+               authorization endpoint and never redirects back to third-party apps.
 
         Returns:
-            {"mode": "pat"} for standalone username+password login, or
-            {"mode": "sso", "redirect_url": "..."} for ShotGrid login page redirect.
+            dict with ``mode`` and, for sso, ``redirect_url``.
         """
         auth_mode = os.getenv("SHOTGRID_AUTH_MODE", "pat").lower()
         if auth_mode == "sso":
-            redirect_url = self._build_sg_sso_redirect()
+            client_id = os.getenv("SHOTGRID_CLIENT_ID", "").strip()
+            if not client_id:
+                # Cannot do a proper OAuth2 redirect without a registered client_id.
+                # Fall back to PAT mode so the user still gets a working login form.
+                import warnings
+                warnings.warn(
+                    "SHOTGRID_AUTH_MODE=sso requires SHOTGRID_CLIENT_ID. "
+                    "Falling back to PAT mode. "
+                    "Register DNA as an OAuth2 client in your ShotGrid site "
+                    "(Admin → API Clients) and set SHOTGRID_CLIENT_ID.",
+                    stacklevel=2,
+                )
+                return {
+                    "mode": "pat",
+                    "warning": (
+                        "SSO mode requires SHOTGRID_CLIENT_ID. "
+                        "Using PAT login as fallback."
+                    ),
+                }
+            redirect_url = self._build_sg_oauth2_redirect(client_id)
             return {"mode": "sso", "redirect_url": redirect_url}
         return {"mode": "pat"}
 
-    def _build_sg_sso_redirect(self) -> str:
-        """Build the ShotGrid login page redirect URL.
+    def _build_sg_oauth2_redirect(self, client_id: str) -> str:
+        """Build the ShotGrid OAuth2 authorization URL.
 
-        Redirects the user to ShotGrid's own login page.
-        ShotGrid handles Autodesk Identity internally — no APS app needed.
+        Uses ShotGrid's own OAuth2 authorization server endpoint:
+            GET <sg_url>/api/v1/auth/authorize
+                ?response_type=code
+                &client_id=<client_id>
+                &redirect_uri=<callback_url>
+                &state=<csrf_token>
 
-        ⚠️ Pending confirmation from Tommy S (Autodesk) that ShotGrid
-        supports redirect_uri on its /auth/login endpoint.
+        This is distinct from ``<sg_url>/auth/login`` (the web UI login page).
+        The OAuth2 authorization endpoint is part of ShotGrid's REST API and
+        DOES honour ``redirect_uri``, redirecting back with ``?code=...&state=...``
+        after authentication.
+
+        Requirements:
+            • DNA registered as an OAuth2 client in ShotGrid Admin → API Clients
+            • ``AUTH_CALLBACK_URL`` whitelisted as a redirect URI in that client
+            • ``SHOTGRID_CLIENT_ID`` env var set to the registered client_id
         """
         import secrets
+        from urllib.parse import urlencode
+
         state = secrets.token_urlsafe(32)
-        callback_url = os.getenv(
-            "AUTH_CALLBACK_URL", "http://localhost:8080/auth/callback"
-        )
+        callback_url = os.getenv("AUTH_CALLBACK_URL", "http://localhost:8080")
         self._sessions.store_oauth_state(state)
         sg_url = os.getenv("SHOTGRID_URL", "").rstrip("/")
-        return (
-            f"{sg_url}/auth/login"
-            f"?redirect_uri={callback_url}"
-            f"&state={state}"
-        )
+        params = urlencode({
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": callback_url,
+            "state": state,
+        })
+        return f"{sg_url}/api/v1/auth/authorize?{params}"
 
     # ── SSO callback (ShotGrid login page redirect) ───────────────────── #
 

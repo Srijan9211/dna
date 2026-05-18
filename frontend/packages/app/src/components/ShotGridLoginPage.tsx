@@ -148,7 +148,7 @@ const ModeBadge = styled.span<{ $mode: ShotGridAuthMode }>`
 // ── Component ─────────────────────────────────────────────────────────── //
 
 export function ShotGridLoginPage() {
-  const { mode, isLoading, signIn } = useShotGridAuth();
+  const { mode, modeWarning, isLoading, signIn } = useShotGridAuth();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -214,6 +214,22 @@ export function ShotGridLoginPage() {
             ? 'Sign in with your ShotGrid account'
             : 'Enter your ShotGrid credentials'}
         </Subtitle>
+
+        {/* ── SSO-to-PAT fallback warning ── */}
+        {modeWarning && (
+          <div style={{
+            padding: '10px 14px',
+            marginBottom: 16,
+            borderRadius: 8,
+            background: 'var(--amber-2)',
+            border: '1px solid var(--amber-6)',
+            fontSize: 13,
+            color: 'var(--amber-11)',
+            lineHeight: 1.5,
+          }}>
+            ⚠️ {modeWarning}
+          </div>
+        )}
 
         {/* ── SSO mode ── */}
         {mode === 'sso' && (

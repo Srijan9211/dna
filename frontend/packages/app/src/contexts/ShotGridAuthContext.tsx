@@ -29,6 +29,8 @@ interface ShotGridAuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   mode: ShotGridAuthMode;
+  /** Set when backend fell back from sso→pat due to missing SHOTGRID_CLIENT_ID */
+  modeWarning: string | null;
   user: ShotGridUser | null;
   token: string | null;
   authProvider: 'shotgrid';
@@ -45,6 +47,7 @@ interface ShotGridAuthProviderProps {
 
 export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
   const [mode, setMode] = useState<ShotGridAuthMode>(null);
+  const [modeWarning, setModeWarning] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<ShotGridUser | null>(() => {
     const stored = sessionStorage.getItem(USER_KEY);
@@ -105,17 +108,21 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
         // 2. Detect auth mode from backend
         const res = await fetch(`${apiBase}/auth/login`);
         if (!res.ok) throw new Error('Failed to fetch auth mode');
-        const data: { mode: ShotGridAuthMode; redirect_url?: string } = await res.json();
+        const data: { mode: ShotGridAuthMode; redirect_url?: string; warning?: string } = await res.json();
         if (cancelled) return;
         setMode(data.mode);
+        setModeWarning(data.warning ?? null);
 
-        // SSO mode: if we have ?session_token in the URL, complete the callback
+        // SSO mode: detect callback params and complete the login flow.
+        //   ?session_token=...  — ShotGrid-native session grant (AMI redirect)
+        //   ?code=...           — OAuth2 authorization_code grant (future path)
         if (data.mode === 'sso') {
-          const params = new URLSearchParams(window.location.search);
-          const sessionToken = params.get('session_token');
-          const state = params.get('state');
-          if (sessionToken) {
-            await handleSsoCallback(sessionToken, state);
+          const urlParams = new URLSearchParams(window.location.search);
+          const sessionToken = urlParams.get('session_token');
+          const code = urlParams.get('code');
+          const state = urlParams.get('state');
+          if (sessionToken || code) {
+            await handleSsoCallback(sessionToken, code, state);
           }
         }
       } catch (err) {
@@ -131,13 +138,30 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
 
   // ── SSO callback handler ─────────────────────────────────────────────── //
 
-  const handleSsoCallback = useCallback(async (sessionToken: string, state: string | null) => {
+  /**
+   * Complete the SSO login flow after ShotGrid redirects back to the app.
+   *
+   * Handles two callback formats:
+   *   • ?session_token=<token>&state=<csrf>  — ShotGrid-native / AMI redirect
+   *   • ?code=<auth_code>&state=<csrf>       — OAuth2 authorization_code grant
+   *
+   * Sends both params to GET /auth/callback on the backend, which exchanges
+   * them for a DNA JWT.  Cleans up the URL afterwards so the tokens don't
+   * remain in the browser history.
+   */
+  const handleSsoCallback = useCallback(async (
+    sessionToken: string | null,
+    code: string | null,
+    state: string | null,
+  ) => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
+      if (sessionToken) params.set('session_token', sessionToken);
+      if (code) params.set('code', code);
       if (state) params.set('state', state);
-      const url = `${apiBase}/auth/callback?session_token=${encodeURIComponent(sessionToken)}${state ? `&state=${encodeURIComponent(state)}` : ''}`;
-      const res = await fetch(url);
+
+      const res = await fetch(`${apiBase}/auth/callback?${params.toString()}`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'SSO callback failed');
@@ -150,7 +174,7 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
         shotgrid_user_id: data.user.shotgrid_user_id,
         auth_mode: 'sso',
       });
-      // Clean up the URL query params
+      // Remove session_token / code from browser URL — never leave tokens in history
       window.history.replaceState({}, '', window.location.pathname);
     } catch (err) {
       console.error('[ShotGridAuth] SSO callback error:', err);
@@ -252,6 +276,7 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
     isAuthenticated: !!token && !!user,
     isLoading,
     mode,
+    modeWarning,
     user,
     token,
     authProvider: 'shotgrid',

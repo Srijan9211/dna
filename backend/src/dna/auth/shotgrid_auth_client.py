@@ -187,48 +187,150 @@ class ShotGridAuthClient:
     # ── User info ─────────────────────────────────────────────────────── #
 
     def get_user_info(self, access_token: str, username: str = None) -> SGUserInfo:
-        """Look up user info using script credentials to find user by email.
+        """Resolve a ShotGrid HumanUser from an authenticated access_token.
 
-        The REST access_token cannot be used with shotgun_api3 directly.
-        We use the script credentials to look up the user by email — the
-        login already succeeded so we know the email is valid.
+        Two code paths:
+
+        1. ``username`` provided (PAT / password grant):
+           Look up the user by email using script credentials or fall back to
+           trusting the authenticated email directly.
+
+        2. ``username`` is None (AMI / SSO / session_token grant):
+           Decode the ShotGrid Bearer JWT (no signature verification — SG
+           issued it, we trust it) to extract the ``identity.id`` claim, then
+           fetch the full user record via script credentials.
+
+           ShotGrid REST API JWTs carry:
+               { "identity": { "type": "HumanUser", "id": <int> }, ... }
+           or  { "sub": "HumanUser:<id>", ... }
+
+           Fallback (no script creds): make a REST call with the Bearer token
+           to ``/api/v1/entity/HumanUsers/<id>``.
         """
-        if not username:
-            raise ValueError("username (email) is required.")
-
         sg_script = os.getenv("SHOTGRID_SCRIPT_NAME")
         sg_key = os.getenv("SHOTGRID_API_KEY")
 
-        if sg_script and sg_key:
+        # ── Path 1: username known (password grant) ──────────────────── #
+        if username:
+            if sg_script and sg_key:
+                try:
+                    from shotgun_api3 import Shotgun
+                    sg = Shotgun(self.sg_url, script_name=sg_script, api_key=sg_key)
+                    user = sg.find_one(
+                        "HumanUser",
+                        filters=[["email", "is", username]],
+                        fields=["id", "name", "email", "login"],
+                    )
+                    if user:
+                        return SGUserInfo(
+                            sg_user_id=int(user["id"]),
+                            email=(user.get("email") or username).lower().strip(),
+                            name=user.get("name") or username,
+                            login=user.get("login") or username,
+                        )
+                except Exception as exc:
+                    raise ValueError(
+                        f"Could not look up user '{username}' in ShotGrid: {exc}"
+                    )
+            # No script creds — trust authenticated username directly.
+            return SGUserInfo(
+                sg_user_id=0,
+                email=username.lower().strip(),
+                name=username.split("@")[0],
+                login=username,
+            )
+
+        # ── Path 2: username unknown (AMI / SSO / session_token grant) ── #
+        # Decode the ShotGrid Bearer JWT to extract the HumanUser ID.
+        user_id = self._extract_user_id_from_jwt(access_token)
+
+        if user_id and sg_script and sg_key:
             try:
                 from shotgun_api3 import Shotgun
                 sg = Shotgun(self.sg_url, script_name=sg_script, api_key=sg_key)
                 user = sg.find_one(
                     "HumanUser",
-                    filters=[["email", "is", username]],
+                    filters=[["id", "is", user_id]],
                     fields=["id", "name", "email", "login"],
                 )
                 if user:
                     return SGUserInfo(
                         sg_user_id=int(user["id"]),
-                        email=(user.get("email") or username).lower().strip(),
-                        name=user.get("name") or username,
-                        login=user.get("login") or username,
+                        email=(user.get("email") or "").lower().strip(),
+                        name=user.get("name") or "",
+                        login=user.get("login") or "",
                     )
             except Exception as exc:
                 raise ValueError(
-                    f"Could not look up user '{username}' in ShotGrid: {exc}"
+                    f"Could not fetch HumanUser(id={user_id}) from ShotGrid: {exc}"
                 )
 
-        # No script credentials — trust the authenticated username directly.
-        # The user already passed ShotGrid auth so we know the email is valid.
-        # sg_user_id will be 0 until script credentials are configured.
-        return SGUserInfo(
-            sg_user_id=0,
-            email=username.lower().strip(),
-            name=username.split("@")[0],
-            login=username,
+        # Fallback: REST call with the Bearer token itself.
+        if user_id:
+            try:
+                resp = requests.get(
+                    f"{self.sg_url}/api/v1/entity/HumanUsers/{user_id}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params={"fields": "id,name,email,login"},
+                    timeout=10,
+                )
+                if resp.ok:
+                    attrs = resp.json().get("data", {}).get("attributes", {})
+                    return SGUserInfo(
+                        sg_user_id=user_id,
+                        email=(attrs.get("email") or "").lower().strip(),
+                        name=attrs.get("name") or "",
+                        login=attrs.get("login") or "",
+                    )
+            except Exception:
+                pass
+
+        raise ValueError(
+            "Could not resolve user identity from ShotGrid access_token. "
+            "Ensure SHOTGRID_SCRIPT_NAME and SHOTGRID_API_KEY are configured, "
+            "or check that the ShotGrid JWT contains an 'identity' claim."
         )
+
+    @staticmethod
+    def _extract_user_id_from_jwt(access_token: str) -> Optional[int]:
+        """Decode a ShotGrid Bearer JWT (no verification) and return HumanUser ID.
+
+        ShotGrid REST API access_tokens are JWTs.  The user identity is in:
+          • ``identity.id``          (preferred, newer SG format)
+          • ``sub``                  (may be int or "HumanUser:42")
+
+        Returns None if decoding fails or no user ID is found.
+        """
+        import base64
+        import json as _json
+
+        try:
+            parts = access_token.split(".")
+            if len(parts) != 3:
+                return None
+            # Pad to a valid base64 length
+            payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
+            payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
+
+            # Preferred: identity.type == HumanUser and identity.id
+            identity = payload.get("identity") or {}
+            if isinstance(identity, dict) and identity.get("type") == "HumanUser":
+                uid = identity.get("id")
+                if uid:
+                    return int(uid)
+
+            # Fallback: sub claim — either int or "HumanUser:42"
+            sub = payload.get("sub")
+            if sub is not None:
+                if isinstance(sub, int):
+                    return sub
+                s = str(sub)
+                if ":" in s:
+                    return int(s.split(":")[-1])
+                return int(s)
+        except Exception:
+            pass
+        return None
 
     # ── Token lifecycle helpers ───────────────────────────────────────── #
 
