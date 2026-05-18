@@ -173,15 +173,49 @@ export function ShotGridLoginPage() {
   };
 
   const handleSsoRedirect = () => {
-    // GET /auth/login already stored the OAuth state in Redis and returned
-    // the redirect_url. We re-fetch to get a fresh state token then redirect.
+    // Fetch a fresh redirect_url (generates a new CSRF state stored in Redis)
+    // then open the ShotGrid/Autodesk authorization page in a POPUP window.
+    //
+    // Why popup instead of same-tab redirect?
+    //   • User stays on DNA — no page abandonment, no loading flicker.
+    //   • After authentication the popup navigates to /auth/callback, the
+    //     React app running there detects window.opener and sends the auth
+    //     params back via window.postMessage, then closes itself.
+    //   • The parent DNA tab receives the postMessage event (listened for in
+    //     ShotGridAuthContext) and completes the login seamlessly.
     const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
     fetch(`${apiBase}/auth/login`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.redirect_url) {
-          window.location.href = data.redirect_url;
+        if (!data.redirect_url) {
+          setError('No redirect URL returned from server. Check SHOTGRID_CLIENT_ID.');
+          return;
         }
+        // Popup dimensions — centred on screen
+        const width = 560;
+        const height = 680;
+        const left = Math.round(window.screenX + (window.outerWidth - width) / 2);
+        const top = Math.round(window.screenY + (window.outerHeight - height) / 2);
+        const features = `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`;
+
+        const popup = window.open(data.redirect_url, 'dna_sso_login', features);
+
+        if (!popup || popup.closed) {
+          // Browser blocked the popup — fall back to same-tab redirect
+          setError('Popup was blocked. Please allow popups for this site, then try again.');
+          return;
+        }
+
+        // Focus the popup
+        popup.focus();
+
+        // Poll to detect if the user closed the popup without completing auth
+        const pollTimer = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(pollTimer);
+          }
+        }, 500);
       })
       .catch(() => setError('Failed to initiate ShotGrid login. Please try again.'));
   };

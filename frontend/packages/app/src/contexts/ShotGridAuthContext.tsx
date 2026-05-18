@@ -82,9 +82,71 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
     apiHandler.setUser(null);
   }, []);
 
+  // ── Popup detection: relay auth params to parent window then close ─── //
+  //
+  // When ShotGrid redirects back to /auth/callback?code=...&state=..., the
+  // React app loads inside the popup window.  We detect this by checking
+  // window.opener — if it exists, we're in the popup, not the main tab.
+  //
+  // Instead of completing the backend auth call here (the session should live
+  // in the parent tab), we relay the URL params via postMessage and close.
+  const isInPopup = !!(window.opener && !window.opener.closed);
+
+  useEffect(() => {
+    if (!isInPopup) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionToken = urlParams.get('session_token');
+    const code = urlParams.get('code');
+    const state = urlParams.get('state');
+
+    if (sessionToken || code) {
+      // Send auth params to the parent DNA tab
+      window.opener.postMessage(
+        { type: 'dna_sso_callback', sessionToken, code, state },
+        window.location.origin,
+      );
+      // Close the popup — the parent tab takes it from here
+      window.close();
+    }
+  // Run once on mount — URL params don't change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Listen for popup postMessage (parent window only) ────────────────── //
+
+  useEffect(() => {
+    if (isInPopup) return; // Popup doesn't need to listen to itself
+
+    const handlePopupMessage = (event: MessageEvent) => {
+      // Only accept messages from the same origin (security)
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'dna_sso_callback') return;
+
+      const { sessionToken, code, state } = event.data as {
+        sessionToken: string | null;
+        code: string | null;
+        state: string | null;
+      };
+      if (sessionToken || code) {
+        handleSsoCallback(sessionToken, code, state);
+      }
+    };
+
+    window.addEventListener('message', handlePopupMessage);
+    return () => window.removeEventListener('message', handlePopupMessage);
+  }, [isInPopup, handleSsoCallback]);
+
   // ── Fetch auth mode + validate any stored token on mount ────────────── //
 
   useEffect(() => {
+    // Skip full init if we're in the popup — it will close itself before
+    // completing, so fetching auth mode / validating tokens is wasted work.
+    if (isInPopup) {
+      setIsLoading(false);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
@@ -113,18 +175,6 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
         setMode(data.mode);
         setModeWarning(data.warning ?? null);
 
-        // SSO mode: detect callback params and complete the login flow.
-        //   ?session_token=...  — ShotGrid-native session grant (AMI redirect)
-        //   ?code=...           — OAuth2 authorization_code grant (future path)
-        if (data.mode === 'sso') {
-          const urlParams = new URLSearchParams(window.location.search);
-          const sessionToken = urlParams.get('session_token');
-          const code = urlParams.get('code');
-          const state = urlParams.get('state');
-          if (sessionToken || code) {
-            await handleSsoCallback(sessionToken, code, state);
-          }
-        }
       } catch (err) {
         console.error('[ShotGridAuth] Failed to detect auth mode:', err);
         if (!cancelled) setMode('none');

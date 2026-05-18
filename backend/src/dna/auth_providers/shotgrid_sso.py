@@ -265,24 +265,30 @@ class ShotGridSSOProvider(AuthProviderBase):
         return {"mode": "pat"}
 
     def _build_sg_oauth2_redirect(self, client_id: str) -> str:
-        """Build the ShotGrid OAuth2 authorization URL.
+        """Build the OAuth2 authorization URL for browser-based SSO.
 
-        Uses ShotGrid's own OAuth2 authorization server endpoint:
-            GET <sg_url>/api/v1/auth/authorize
-                ?response_type=code
-                &client_id=<client_id>
-                &redirect_uri=<callback_url>
-                &state=<csrf_token>
+        The authorization endpoint is configured via ``SHOTGRID_OAUTH2_AUTHORIZE_URL``.
+        Which URL to use depends on how / where ``SHOTGRID_CLIENT_ID`` was registered:
 
-        This is distinct from ``<sg_url>/auth/login`` (the web UI login page).
-        The OAuth2 authorization endpoint is part of ShotGrid's REST API and
-        DOES honour ``redirect_uri``, redirecting back with ``?code=...&state=...``
-        after authentication.
+        ┌─────────────────────────────────────────────────────────────────────┐
+        │ Registration source              │ SHOTGRID_OAUTH2_AUTHORIZE_URL   │
+        ├─────────────────────────────────────────────────────────────────────┤
+        │ ShotGrid Admin → Applications    │ <sg_url>/oauth/authorize         │
+        │   (ShotGrid-native OAuth2 app)   │   (DEFAULT — tries this first)  │
+        ├─────────────────────────────────────────────────────────────────────┤
+        │ Autodesk APS developer portal    │ https://developer.api.autodesk  │
+        │   (developer.autodesk.com)       │   .com/authentication/v2/       │
+        │                                  │   authorize                      │
+        └─────────────────────────────────────────────────────────────────────┘
 
-        Requirements:
-            • DNA registered as an OAuth2 client in ShotGrid Admin → API Clients
-            • ``AUTH_CALLBACK_URL`` whitelisted as a redirect URI in that client
-            • ``SHOTGRID_CLIENT_ID`` env var set to the registered client_id
+        The ``redirect_uri`` (``AUTH_CALLBACK_URL``) must be registered in
+        whichever platform the client was created in.
+
+        After ShotGrid/Autodesk authenticates the user, it redirects back to
+        ``AUTH_CALLBACK_URL?code=<auth_code>&state=<csrf>`` which the frontend
+        (running in the popup window) relays to the parent DNA tab via
+        ``window.postMessage``.  The parent tab then calls ``GET /auth/callback``
+        to exchange the code for a DNA JWT.
         """
         import secrets
         from urllib.parse import urlencode
@@ -290,14 +296,23 @@ class ShotGridSSOProvider(AuthProviderBase):
         state = secrets.token_urlsafe(32)
         callback_url = os.getenv("AUTH_CALLBACK_URL", "http://localhost:8080/auth/callback")
         self._sessions.store_oauth_state(state)
+
         sg_url = os.getenv("SHOTGRID_URL", "").rstrip("/")
+        # Default: ShotGrid-native OAuth2 authorization endpoint.
+        # Override with SHOTGRID_OAUTH2_AUTHORIZE_URL if your client_id came
+        # from APS (Autodesk developer portal) or a non-standard SG deployment.
+        authorize_url = os.getenv(
+            "SHOTGRID_OAUTH2_AUTHORIZE_URL",
+            f"{sg_url}/oauth/authorize",
+        )
+
         params = urlencode({
             "response_type": "code",
             "client_id": client_id,
             "redirect_uri": callback_url,
             "state": state,
         })
-        return f"{sg_url}/api/v1/auth/authorize?{params}"
+        return f"{authorize_url}?{params}"
 
     # ── SSO callback (ShotGrid login page redirect) ───────────────────── #
 
