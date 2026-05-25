@@ -77,9 +77,9 @@ class ShotGridAuthClient:
         Content-Type: application/x-www-form-urlencoded
     """
 
-    # Refresh SG token 2 minutes before it expires to avoid mid-request 401s.
-    # SG default token lifetime = 3600s; actual value is in expires_in field.
-    TTL_BUFFER_SEC: int = int(os.getenv("SG_ACCESS_TOKEN_TTL_BUFFER_SEC", "120"))
+    # Class-level default — overridden per-instance in __init__ so that
+    # environment variable changes after import are picked up correctly.
+    _DEFAULT_TTL_BUFFER_SEC: int = 120
 
     def __init__(self, sg_url: Optional[str] = None) -> None:
         self.sg_url = (sg_url or os.getenv("SHOTGRID_URL") or "").rstrip("/")
@@ -88,6 +88,10 @@ class ShotGridAuthClient:
         # NOTE: Auth endpoint is always /api/v1/ — never /api/v1.1/
         self._token_url = f"{self.sg_url}/api/v1/auth/access_token"
         self._is_onprem = os.getenv("SG_SITE_TYPE", "cloud").lower() == "onprem"
+        # Read at instantiation time so tests / runtime env changes take effect.
+        self.TTL_BUFFER_SEC: int = int(
+            os.getenv("SG_ACCESS_TOKEN_TTL_BUFFER_SEC", str(self._DEFAULT_TTL_BUFFER_SEC))
+        )
 
     # ── Grant: session_token (AMI flow — primary, no PAT needed) ─────── #
 
@@ -232,12 +236,13 @@ class ShotGridAuthClient:
                     raise ValueError(
                         f"Could not look up user '{username}' in ShotGrid: {exc}"
                     )
-            # No script creds — trust authenticated username directly.
-            return SGUserInfo(
-                sg_user_id=0,
-                email=username.lower().strip(),
-                name=username.split("@")[0],
-                login=username,
+            # No script credentials — cannot look up user without them.
+            # Returning sg_user_id=0 would silently break permission enforcement
+            # on all subsequent ShotGrid API calls.  Fail loudly instead.
+            raise ValueError(
+                f"Cannot look up ShotGrid user '{username}': "
+                "SHOTGRID_SCRIPT_NAME and SHOTGRID_API_KEY are required to resolve "
+                "user identity. Set them in your environment."
             )
 
         # ── Path 2: username unknown (AMI / SSO / session_token grant) ── #
@@ -334,15 +339,14 @@ class ShotGridAuthClient:
 
     # ── Token lifecycle helpers ───────────────────────────────────────── #
 
-    @staticmethod
-    def should_refresh(token_set: SGTokenSet) -> bool:
+    def should_refresh(self, token_set: SGTokenSet) -> bool:
         """Return True if the SG access_token should be refreshed now.
 
         The SG token lifetime is returned in expires_in (default 3600s).
         We refresh TTL_BUFFER_SEC (120s) before expiry.
         """
         elapsed = time.time() - token_set.obtained_at
-        return elapsed >= (token_set.expires_in - ShotGridAuthClient.TTL_BUFFER_SEC)
+        return elapsed >= (token_set.expires_in - self.TTL_BUFFER_SEC)
 
     @staticmethod
     def is_expired(token_set: SGTokenSet) -> bool:

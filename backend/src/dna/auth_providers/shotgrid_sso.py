@@ -53,9 +53,13 @@ class ShotGridSSOProvider(AuthProviderBase):
         self._algorithm = os.getenv("JWT_ALGORITHM", "HS256")
         self._expire_seconds = int(os.getenv("JWT_EXPIRE_MINUTES", "480")) * 60
 
-        if self._secret == "CHANGE_ME_USE_A_REAL_SECRET_32CHARS":
-            import warnings
-            warnings.warn("JWT_SECRET_KEY is using the insecure default.", stacklevel=2)
+        _INSECURE_DEFAULT = "CHANGE_ME_USE_A_REAL_SECRET_32CHARS"
+        if self._secret == _INSECURE_DEFAULT:
+            raise ValueError(
+                "JWT_SECRET_KEY is set to the insecure placeholder value. "
+                "Generate a secure secret with:  openssl rand -hex 32  "
+                "and set it in your environment before starting the server."
+            )
 
         self._sessions: SessionStore = session_store or _lazy_session_store()
         # _sg_auth is initialised lazily via _get_sg_auth() to avoid failing
@@ -114,7 +118,8 @@ class ShotGridSSOProvider(AuthProviderBase):
             auth_provider="shotgrid_pat",
             shotgrid=ShotGridCredentials(
                 user_id=user_info.sg_user_id,
-                access_token=username,              # username used as SG login key
+                username=username,                  # ShotGrid login name — never overwritten
+                access_token=sg_token_set.access_token,   # Bearer token — rotated on refresh
                 refresh_token=sg_token_set.refresh_token,
                 password=password,                  # stored server-side, never sent to client
             ),
@@ -304,5 +309,9 @@ def _release_from_pool(session_id: str) -> None:
     try:
         from dna.auth.connection_pool import get_connection_pool
         get_connection_pool().release(session_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        import warnings
+        warnings.warn(
+            f"[shotgrid_sso] Failed to release pool entry for session '{session_id}': {exc}",
+            stacklevel=2,
+        )

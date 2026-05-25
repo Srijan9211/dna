@@ -510,8 +510,11 @@ async def auth_logout(
             from dna.auth_providers.shotgrid_sso import ShotGridSSOProvider
             if isinstance(auth_provider, ShotGridSSOProvider):
                 auth_provider.revoke_token(credentials.credentials)
-        except Exception:
-            pass
+        except Exception as exc:
+            # Log but do not surface to the caller — logout must always succeed
+            # from the client's perspective so the browser clears its token.
+            import warnings
+            warnings.warn(f"[auth_logout] Token revocation error (non-fatal): {exc}", stacklevel=2)
     return {"message": "Logged out successfully.", "action": "delete_token"}
 
 
@@ -530,11 +533,6 @@ async def auth_me(
                 session = auth_provider.get_session_for_request(credentials.credentials)
                 response["name"] = session.name
                 response["shotgrid_user_id"] = session.sg_user_id
-                try:
-                    from dna.auth.connection_pool import get_connection_pool
-                    response["_pool"] = get_connection_pool().stats
-                except Exception:
-                    pass
         except ValueError as exc:
             # Session is missing from MongoDB (e.g. after backend restart).
             # Raise 401 so the frontend clears the stale token and shows

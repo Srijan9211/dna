@@ -17,10 +17,11 @@ Collection ``dna_sessions``:
     created_at   : float (unix timestamp)
     expires_at   : datetime  ← TTL index on this field
     shotgrid     : sub-document
-      user_id    : int
-      access_token : str
+      user_id      : int
+      username     : str       (ShotGrid login name — never overwritten after login)
+      access_token : str       (ShotGrid Bearer token — rotated on refresh)
       refresh_token: str | null
-      password   : str | null  (PAT path — username + Legacy Password)
+      password     : str | null  (PAT path — Legacy Password, never sent to client)
 
 Collection ``dna_oauth_states``:
     _id          : state token (str)
@@ -67,14 +68,20 @@ class ShotGridCredentials:
     Fields
     ------
     user_id       : Integer primary key of the HumanUser record in ShotGrid.
-    access_token  : ShotGrid Bearer access token — used for all SG API calls.
+    username      : ShotGrid login name (email on cloud, login on on-prem sites).
+                    Used as the ``login`` argument to ``shotgun_api3.Shotgun``
+                    together with ``password``.  Never overwritten after creation.
+    access_token  : ShotGrid Bearer access token — returned by the ShotGrid OAuth
+                    endpoint and refreshed periodically.  Used when connecting via
+                    ``session_token=`` (pool path) rather than login+password.
     refresh_token : ShotGrid refresh token — used to obtain a new access_token.
     password      : Legacy Login password — stored because shotgun_api3 requires
                     username+password, not a Bearer token.
     """
 
     user_id: int
-    access_token: str
+    username: str          # ShotGrid login name — never overwritten after login
+    access_token: str      # ShotGrid Bearer token — rotated on refresh
     refresh_token: Optional[str] = None
     password: Optional[str] = None
 
@@ -161,8 +168,15 @@ class UserSession:
 
     # Legacy property aliases — kept so existing call-sites continue to work.
     # Update call-sites to use session.shotgrid.* directly when convenient.
+
+    @property
+    def sg_username(self) -> Optional[str]:
+        """ShotGrid login name — use as the ``login=`` arg to shotgun_api3."""
+        return self.shotgrid.username if self.shotgrid else None
+
     @property
     def sg_token(self) -> str:
+        """ShotGrid Bearer access token (rotated on refresh)."""
         return self.shotgrid.access_token if self.shotgrid else ""
 
     @sg_token.setter
@@ -336,7 +350,19 @@ class MongoSessionStore(AbstractSessionStore):
             doc["session_id"] = doc.pop("_id")
             doc.pop("expires_at", None)
             return UserSession.from_dict(doc)
-        except (KeyError, TypeError):
+        except (KeyError, TypeError) as exc:
+            import warnings
+            warnings.warn(
+                f"[session_store] Failed to deserialize session '{session_id}': {exc}. "
+                "The session document may be from an older schema — deleting it.",
+                stacklevel=2,
+            )
+            # Remove the corrupt document so the user is prompted to log in again
+            # rather than seeing repeated errors on every request.
+            try:
+                self._sessions.delete_one({"_id": session_id})
+            except Exception:
+                pass
             return None
 
     def update_session(self, session: UserSession) -> None:

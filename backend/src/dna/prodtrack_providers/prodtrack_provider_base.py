@@ -9,6 +9,7 @@ session token AND the user's session_id.  The session_id is used by
 """
 
 import os
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -20,7 +21,14 @@ class UserNotFoundError(Exception):
     pass
 
 
-class ProdtrackProviderBase:
+class ProdtrackProviderBase(ABC):
+    """Abstract base for all production tracking providers.
+
+    Subclasses must implement every ``@abstractmethod``.  Adding a new provider
+    (e.g. Ftrack) means subclassing this and implementing all methods — no
+    changes to callers or this base class are needed (Open/Closed Principle).
+    """
+
     def __init__(self):
         pass
 
@@ -28,41 +36,53 @@ class ProdtrackProviderBase:
         from dna.models.entity import ENTITY_MODELS, EntityBase
         return ENTITY_MODELS.get(object_type, EntityBase)
 
+    @abstractmethod
     def get_entity(self, entity_type: str, entity_id: int, resolve_links: bool = True) -> "EntityBase":
-        raise NotImplementedError
+        """Fetch a single entity by type and ID."""
 
+    @abstractmethod
     def add_entity(self, entity_type: str, entity: "EntityBase") -> "EntityBase":
-        raise NotImplementedError
+        """Create a new entity and return the persisted version."""
 
+    @abstractmethod
     def find(self, entity_type: str, filters: list[dict[str, Any]], limit: int = 0) -> list["EntityBase"]:
-        raise NotImplementedError
+        """Return entities matching the given filters."""
 
+    @abstractmethod
     def search(self, query: str, entity_types: list[str], project_id: int | None = None, limit: int = 10) -> list[dict[str, Any]]:
-        raise NotImplementedError
+        """Full-text search across one or more entity types."""
 
+    @abstractmethod
     def get_user_by_email(self, user_email: str) -> "User":
-        raise NotImplementedError
+        """Return the User record for the given email address."""
 
+    @abstractmethod
     def get_projects_for_user(self, user_email: str) -> list["Project"]:
-        raise NotImplementedError
+        """Return projects accessible by the given user."""
 
+    @abstractmethod
     def get_playlists_for_project(self, project_id: int) -> list["Playlist"]:
-        raise NotImplementedError
+        """Return all playlists belonging to the project."""
 
+    @abstractmethod
     def get_versions_for_playlist(self, playlist_id: int) -> list["Version"]:
-        raise NotImplementedError
+        """Return all versions in the playlist."""
 
+    @abstractmethod
     def get_version_statuses(self, project_id: int | None = None) -> list[dict[str, str]]:
-        raise NotImplementedError
+        """Return valid version status codes (optionally scoped to a project)."""
 
+    @abstractmethod
     def publish_note(self, version_id: int, content: str, subject: str, to_users: list[int], cc_users: list[int], links: list["EntityBase"], author_email: str | None = None, version_status: str | None = None) -> int:
-        raise NotImplementedError
+        """Create and publish a note; return the new note ID."""
 
+    @abstractmethod
     def update_version_status(self, version_id: int, status: str) -> bool:
-        raise NotImplementedError
+        """Update the status of a version. Returns True on success."""
 
+    @abstractmethod
     def attach_file_to_note(self, note_id: int, file_path: str, display_name: str) -> bool:
-        raise NotImplementedError
+        """Attach a local file to an existing note. Returns True on success."""
 
 
 def get_prodtrack_provider(
@@ -100,18 +120,19 @@ def get_prodtrack_provider(
         from dna.prodtrack_providers.shotgrid import ShotgridProvider
 
         if user_token:
-            # user_token = username, session_id links to MongoDB session with password
-            # This gives a real user-scoped connection with native SG permissions
+            # user_token is the ShotGrid Bearer token — used as a presence signal.
+            # For login+password auth (PAT path), we retrieve username and password
+            # from the session to build a shotgun_api3 connection.
             from dna.auth.session_store import get_session_store
             store = get_session_store()
             session = store.get_session(session_id) if session_id else None
-            if session and session.sg_password:
+            if session and session.sg_password and session.sg_username:
                 return ShotgridProvider(
-                    login=session.sg_token,        # username
-                    password=session.sg_password,  # legacy password
+                    login=session.sg_username,     # ShotGrid login name (never Bearer token)
+                    password=session.sg_password,  # legacy password stored server-side
                     session_id=session_id,
                 )
-            # Fallback to sudo if no password stored
+            # Fallback: no stored password (e.g. future SSO path) — use sudo via script creds
             return ShotgridProvider(sudo_user=user_token, session_id=session_id)
         else:
             # Script-auth fallback: background jobs / non-SG-SSO auth providers.

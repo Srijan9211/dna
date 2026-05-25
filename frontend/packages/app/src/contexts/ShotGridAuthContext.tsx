@@ -86,22 +86,25 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
       // app with a dead session that returns 401 on every API call.
       const storedToken = sessionStorage.getItem(TOKEN_KEY);
       if (storedToken) {
-        let tokenValid = false;
+        // Only clear the token on a definitive rejection (401 / 403).
+        // Network errors (backend still starting, transient connectivity) are
+        // not treated as token invalidation — the user would lose their session
+        // every time the page is opened during a backend restart.
         try {
           const meRes = await fetch(`${apiBase}/auth/me`, {
             headers: { Authorization: `Bearer ${storedToken}` },
           });
-          tokenValid = meRes.ok;
+          const shouldClear = meRes.status === 401 || meRes.status === 403;
+          if (shouldClear && !cancelled) {
+            sessionStorage.removeItem(TOKEN_KEY);
+            sessionStorage.removeItem(USER_KEY);
+            setToken(null);
+            setUser(null);
+            apiHandler.setUser(null);
+          }
         } catch {
-          // Network error (backend down / still starting) → treat as invalid
-          tokenValid = false;
-        }
-        if (!tokenValid && !cancelled) {
-          sessionStorage.removeItem(TOKEN_KEY);
-          sessionStorage.removeItem(USER_KEY);
-          setToken(null);
-          setUser(null);
-          apiHandler.setUser(null);
+          // Network error — keep the stored token; the user will get a 401
+          // on their first real API call if the session truly expired.
         }
       }
 
