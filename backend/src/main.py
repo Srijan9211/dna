@@ -356,8 +356,10 @@ async def get_user_scoped_prodtrack_provider(
             from dna.auth_providers.shotgrid_sso import ShotGridSSOProvider
             if isinstance(auth_provider, ShotGridSSOProvider):
                 session = auth_provider.get_session_for_request(credentials.credentials)
-                sg_token = session.sg_token
                 session_id = session.session_id
+                # Google sessions have no ShotGrid token — fall back to script creds
+                if session.auth_provider != "google" and session.sg_token:
+                    sg_token = session.sg_token
         except ValueError as exc:
             raise HTTPException(
                 status_code=401, detail=str(exc),
@@ -543,16 +545,9 @@ async def auth_callback(
                 session_token=session_token, state=state
             )
 
-        # ── Path B: authorization_code grant (future OAuth2 flow) ─────────────
+        # ── Path B: APS OAuth2 authorization_code grant ───────────────────────
         if code:
-            raise HTTPException(
-                status_code=501,
-                detail=(
-                    "OAuth2 authorization_code grant is not yet implemented. "
-                    "Register DNA as a ShotGrid OAuth2 client and set "
-                    "SHOTGRID_CLIENT_ID / SHOTGRID_CLIENT_SECRET to enable this path."
-                ),
-            )
+            return auth_provider.handle_aps_sso_callback(code=code, state=state)
 
         raise HTTPException(
             status_code=400,
@@ -562,6 +557,33 @@ async def auth_callback(
             ),
         )
     except ValueError as exc:
+        print(f"[auth_callback] APS SSO error: {exc}")
+        raise HTTPException(status_code=401, detail=str(exc))
+
+
+class GoogleLoginRequest(BaseModel):
+    """Google OAuth2 access token or ID token from the browser."""
+    token: str
+
+
+@app.post("/auth/google/login", tags=["Auth"], summary="Google OAuth2 login — exchange Google token for DNA JWT")
+async def auth_google_login(body: GoogleLoginRequest, auth_provider: AuthProviderDep):
+    """Validate a Google access/ID token and issue a DNA JWT.
+
+    The frontend obtains the Google token via the Google Identity popup
+    (useGoogleLogin hook) and POSTs it here.  The backend validates it
+    server-side, creates a Redis session, and returns a DNA JWT — the same
+    shape as the ShotGrid auth response so the frontend works unchanged.
+    """
+    if auth_provider is None:
+        raise HTTPException(status_code=400, detail="Authentication is disabled (AUTH_PROVIDER=none).")
+    try:
+        from dna.auth_providers.shotgrid_sso import ShotGridSSOProvider
+        if not isinstance(auth_provider, ShotGridSSOProvider):
+            raise HTTPException(status_code=400, detail="Google login requires AUTH_PROVIDER=shotgrid.")
+        return auth_provider.handle_google_login(body.token)
+    except ValueError as exc:
+        print(f"[auth_google_login] error: {exc}")
         raise HTTPException(status_code=401, detail=str(exc))
 
 
@@ -622,8 +644,16 @@ async def auth_me(
                     response["_pool"] = get_connection_pool().stats
                 except Exception:
                     pass
-        except ValueError:
-            pass
+        except ValueError as exc:
+            # Session is missing from Redis (e.g. after backend restart).
+            # Raise 401 so the frontend clears the stale token and shows
+            # the login page — instead of letting the user reach the app
+            # with a dead session and seeing 401 on every API call.
+            raise HTTPException(
+                status_code=401,
+                detail=str(exc),
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     return response
 
 
