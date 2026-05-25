@@ -17,21 +17,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-  redis:
-    image: redis:7-alpine
-    container_name: dna-redis
-    command: redis-server --requirepass dna-redis-changeme --maxmemory 256mb --maxmemory-policy allkeys-lru --save "" --appendonly no
-    ports:
-      - "6379:6379"
-    restart: unless-stopped
-    networks:
-      - dna-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "dna-redis-changeme", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   api:
     build:
       context: .
@@ -58,7 +43,6 @@ services:
       - LLM_PROVIDER=openai
     depends_on:
       - mongo
-      - redis
     restart: unless-stopped
     networks:
       - dna-network

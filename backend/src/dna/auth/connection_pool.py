@@ -119,7 +119,7 @@ class ShotGridConnectionPool:
 
         Args:
             session_id: The user's session ID (from the DNA JWT).
-            sg_token:   The ShotGrid session token (from Redis session store).
+            sg_token:   The ShotGrid session token (from MongoDB session store).
 
         Returns:
             A live ``Shotgun`` instance authenticated as this user.
@@ -155,7 +155,7 @@ class ShotGridConnectionPool:
     def release(self, session_id: str) -> None:
         """Remove a session's connection from the pool.
 
-        Call this on logout or when a session is deleted from Redis.
+        Call this on logout or when a session is deleted from MongoDB.
 
         Args:
             session_id: The session ID whose connection should be removed.

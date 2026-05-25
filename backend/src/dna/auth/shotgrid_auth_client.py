@@ -169,7 +169,7 @@ class ShotGridAuthClient:
         We call this proactively via should_refresh() 2 minutes before expiry.
 
         Args:
-            refresh_token: The ShotGrid refresh_token from the Redis session.
+            refresh_token: The ShotGrid refresh_token from the MongoDB session.
 
         Returns:
             New SGTokenSet (new access_token + new refresh_token).

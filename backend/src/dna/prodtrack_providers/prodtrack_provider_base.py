@@ -72,7 +72,7 @@ def get_prodtrack_provider(
     """Get the production tracking provider.
 
     Args:
-        user_token:  ShotGrid session token from the user's Redis session.
+        user_token:  ShotGrid session token from the user's MongoDB session.
                      When provided, queries run as this user and ShotGrid
                      enforces their native permissions.
         session_id:  The user's DNA session ID.  Used to retrieve a pooled
@@ -100,7 +100,7 @@ def get_prodtrack_provider(
         from dna.prodtrack_providers.shotgrid import ShotgridProvider
 
         if user_token:
-            # user_token = username, session_id links to Redis session with password
+            # user_token = username, session_id links to MongoDB session with password
             # This gives a real user-scoped connection with native SG permissions
             from dna.auth.session_store import get_session_store
             store = get_session_store()

@@ -6,4 +6,4 @@ export type { ThemeMode } from './ThemeContext';
 export { AuthProvider, useAuth } from './AuthContext';
 export type { AuthUser } from './AuthContext';
 export { ShotGridAuthProvider, useShotGridAuth } from './ShotGridAuthContext';
-export type { ShotGridUser, ShotGridAuthMode, AuthMethod, ModeConfig, LoginModes } from './ShotGridAuthContext';
+export type { ShotGridUser } from './ShotGridAuthContext';

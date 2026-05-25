@@ -8,9 +8,7 @@ from pathlib import Path
 from typing import Annotated, Optional, cast
 
 import asyncio
-from typing import Any
 
-from fastapi import Form
 from pydantic import BaseModel
 
 from fastapi import (
@@ -357,8 +355,7 @@ async def get_user_scoped_prodtrack_provider(
             if isinstance(auth_provider, ShotGridSSOProvider):
                 session = auth_provider.get_session_for_request(credentials.credentials)
                 session_id = session.session_id
-                # Google sessions have no ShotGrid token — fall back to script creds
-                if session.auth_provider != "google" and session.sg_token:
+                if session.sg_token:
                     sg_token = session.sg_token
         except ValueError as exc:
             raise HTTPException(
@@ -465,32 +462,6 @@ async def auth_get_login_info(auth_provider: AuthProviderDep = None):
     return {"mode": "none"}
 
 
-@app.post("/auth/ami-callback", tags=["Auth"], summary="AMI callback — exchange ShotGrid session token for DNA JWT")
-async def auth_ami_callback(
-    session_token: str = Form(...),
-    entity_type: Optional[str] = Form(None),
-    entity_id: Optional[int] = Form(None),
-    project_id: Optional[int] = Form(None),
-    auth_provider: AuthProviderDep = None,
-):
-    """AMI callback — exchange ShotGrid session_token for a DNA JWT."""
-    if auth_provider is None:
-        raise HTTPException(status_code=400, detail="Authentication is disabled (AUTH_PROVIDER=none).")
-    try:
-        from dna.auth_providers.shotgrid_sso import ShotGridSSOProvider
-        if not isinstance(auth_provider, ShotGridSSOProvider):
-            raise HTTPException(status_code=400, detail="AMI callback requires AUTH_PROVIDER=shotgrid.")
-        entity_context: dict[str, Any] = {}
-        if entity_type:
-            entity_context["entity_type"] = entity_type
-        if entity_id:
-            entity_context["entity_id"] = entity_id
-        if project_id:
-            entity_context["project_id"] = project_id
-        return auth_provider.login_via_ami(sg_session_token=session_token, entity_context=entity_context)
-    except ValueError as exc:
-        raise HTTPException(status_code=401, detail=str(exc))
-
 
 @app.post("/auth/login", tags=["Auth"], summary="Standalone login — ShotGrid username + Legacy Password")
 async def auth_login(body: LoginRequest, auth_provider: AuthProviderDep):
@@ -505,86 +476,6 @@ async def auth_login(body: LoginRequest, auth_provider: AuthProviderDep):
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc))
 
-
-@app.get("/auth/callback", tags=["Auth"], summary="ShotGrid SSO callback")
-async def auth_callback(
-    session_token: Optional[str] = None,
-    code: Optional[str] = None,
-    state: Optional[str] = None,
-    auth_provider: AuthProviderDep = None,
-):
-    """Complete the ShotGrid SSO login flow.
-
-    Called when ShotGrid redirects back to AUTH_CALLBACK_URL after the user
-    authenticates.  Two possible callback formats:
-
-    * ``?session_token=<token>&state=<csrf>``  — ShotGrid-native session grant
-    * ``?code=<auth_code>&state=<csrf>``       — OAuth2 authorization code grant
-      (requires ShotGrid OAuth2 client registration; Tier-3 future path)
-
-    On success, returns a DNA JWT + user info that the frontend stores in
-    sessionStorage.  The frontend's ``ShotGridAuthContext.useEffect`` detects
-    these query params in the URL on mount and calls this endpoint automatically.
-    """
-    if auth_provider is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Authentication is disabled (AUTH_PROVIDER=none).",
-        )
-    try:
-        from dna.auth_providers.shotgrid_sso import ShotGridSSOProvider
-        if not isinstance(auth_provider, ShotGridSSOProvider):
-            raise HTTPException(
-                status_code=400,
-                detail="SSO callback requires AUTH_PROVIDER=shotgrid.",
-            )
-
-        # ── Path A: session_token grant (ShotGrid-native SSO / AMI redirect) ──
-        if session_token:
-            return auth_provider.handle_sg_sso_callback(
-                session_token=session_token, state=state
-            )
-
-        # ── Path B: APS OAuth2 authorization_code grant ───────────────────────
-        if code:
-            return auth_provider.handle_aps_sso_callback(code=code, state=state)
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "SSO callback received no usable parameters. "
-                "Expected ?session_token=... or ?code=... in the callback URL."
-            ),
-        )
-    except ValueError as exc:
-        print(f"[auth_callback] APS SSO error: {exc}")
-        raise HTTPException(status_code=401, detail=str(exc))
-
-
-class GoogleLoginRequest(BaseModel):
-    """Google OAuth2 access token or ID token from the browser."""
-    token: str
-
-
-@app.post("/auth/google/login", tags=["Auth"], summary="Google OAuth2 login — exchange Google token for DNA JWT")
-async def auth_google_login(body: GoogleLoginRequest, auth_provider: AuthProviderDep):
-    """Validate a Google access/ID token and issue a DNA JWT.
-
-    The frontend obtains the Google token via the Google Identity popup
-    (useGoogleLogin hook) and POSTs it here.  The backend validates it
-    server-side, creates a Redis session, and returns a DNA JWT — the same
-    shape as the ShotGrid auth response so the frontend works unchanged.
-    """
-    if auth_provider is None:
-        raise HTTPException(status_code=400, detail="Authentication is disabled (AUTH_PROVIDER=none).")
-    try:
-        from dna.auth_providers.shotgrid_sso import ShotGridSSOProvider
-        if not isinstance(auth_provider, ShotGridSSOProvider):
-            raise HTTPException(status_code=400, detail="Google login requires AUTH_PROVIDER=shotgrid.")
-        return auth_provider.handle_google_login(body.token)
-    except ValueError as exc:
-        print(f"[auth_google_login] error: {exc}")
-        raise HTTPException(status_code=401, detail=str(exc))
 
 
 @app.post("/auth/refresh", tags=["Auth"], summary="Refresh access token")
@@ -645,7 +536,7 @@ async def auth_me(
                 except Exception:
                     pass
         except ValueError as exc:
-            # Session is missing from Redis (e.g. after backend restart).
+            # Session is missing from MongoDB (e.g. after backend restart).
             # Raise 401 so the frontend clears the stale token and shows
             # the login page — instead of letting the user reach the app
             # with a dead session and seeing 401 on every API call.

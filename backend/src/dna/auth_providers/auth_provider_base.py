@@ -55,14 +55,11 @@ def get_auth_provider() -> Optional[AuthProviderBase]:
 
     Supported values:
         ``none``      - No authentication (development/testing only).
-        ``google``    - Google Identity (ID token / access token).
-        ``shotgrid``  - ShotGrid / Autodesk SSO (issues local JWT wrapping SG
-                        session token).  Requires ``SHOTGRID_URL`` and
-                        ``JWT_SECRET_KEY`` env vars.
+        ``shotgrid``  - ShotGrid PAT login (username + Legacy Password).
+                        Requires ``SHOTGRID_URL`` and ``JWT_SECRET_KEY`` env vars.
 
     Returns:
-        An AuthProviderBase instance, or a NoopAuthProvider when set to
-        ``"none"``.
+        An AuthProviderBase instance, or None when set to ``"none"``.
 
     Raises:
         ValueError: If ``AUTH_PROVIDER`` is set to an unrecognised value.
@@ -71,21 +68,14 @@ def get_auth_provider() -> Optional[AuthProviderBase]:
 
     if provider == "none":
         from dna.auth_providers.noop_auth_provider import NoopAuthProvider
-
         return NoopAuthProvider()
-
-    elif provider == "google":
-        from dna.auth_providers.google_auth_provider import GoogleAuthProvider
-
-        return GoogleAuthProvider()
 
     elif provider == "shotgrid":
         from dna.auth_providers.shotgrid_sso import ShotGridSSOProvider
-
         return ShotGridSSOProvider()
 
     else:
         raise ValueError(
             f"Unknown auth provider: '{provider}'. "
-            f"Valid values: none, google, shotgrid."
+            f"Valid values: none, shotgrid."
         )

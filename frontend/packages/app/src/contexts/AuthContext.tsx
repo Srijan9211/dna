@@ -6,14 +6,13 @@ import {
   useCallback,
   type ReactNode,
 } from 'react';
-import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
 import { apiHandler } from '../api';
 import { ShotGridAuthProvider, useShotGridAuth } from './ShotGridAuthContext';
 
 const STORAGE_KEY = 'dna-auth-token';
 const USER_STORAGE_KEY = 'dna-auth-user';
 
-export type AuthProviderType = 'none' | 'google' | 'shotgrid';
+export type AuthProviderType = 'none' | 'shotgrid';
 
 export interface AuthUser {
   id: string;
@@ -36,11 +35,9 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function getAuthProvider(): AuthProviderType {
-  const provider = import.meta.env.VITE_AUTH_PROVIDER || 'google';
-  if (provider === 'none' || provider === 'google' || provider === 'shotgrid') {
-    return provider;
-  }
-  return 'google';
+  const provider = import.meta.env.VITE_AUTH_PROVIDER || 'none';
+  if (provider === 'shotgrid') return 'shotgrid';
+  return 'none';
 }
 
 interface NoopAuthProviderInnerProps {
@@ -51,34 +48,18 @@ function NoopAuthProviderInner({ children }: NoopAuthProviderInnerProps) {
   const [user, setUser] = useState<AuthUser | null>(() => {
     const stored = localStorage.getItem(USER_STORAGE_KEY);
     if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {
-        return null;
-      }
+      try { return JSON.parse(stored); } catch { return null; }
     }
     return null;
   });
 
-  const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem(STORAGE_KEY);
-  });
-
-  useEffect(() => {
-    if (token === 'noop-token' && user?.email) {
-      localStorage.setItem(STORAGE_KEY, user.email);
-      setToken(user.email);
-    }
-  }, [token, user?.email]);
+  const [token, setToken] = useState<string | null>(
+    () => localStorage.getItem(STORAGE_KEY)
+  );
 
   useEffect(() => {
     if (token && user) {
-      apiHandler.setUser({
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        token: token,
-      });
+      apiHandler.setUser({ id: user.id, email: user.email, name: user.name, token });
     } else {
       apiHandler.setUser(null);
     }
@@ -93,18 +74,10 @@ function NoopAuthProviderInner({ children }: NoopAuthProviderInnerProps) {
   }, []);
 
   const handleSignInWithEmail = useCallback((email: string) => {
-    const authUser: AuthUser = {
-      id: email,
-      email: email,
-      name: email.split('@')[0],
-    };
-
-    const noopToken = email;
-
-    localStorage.setItem(STORAGE_KEY, noopToken);
+    const authUser: AuthUser = { id: email, email, name: email.split('@')[0] };
+    localStorage.setItem(STORAGE_KEY, email);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(authUser));
-
-    setToken(noopToken);
+    setToken(email);
     setUser(authUser);
   }, []);
 
@@ -122,116 +95,6 @@ function NoopAuthProviderInner({ children }: NoopAuthProviderInnerProps) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-interface GoogleAuthProviderInnerProps {
-  children: ReactNode;
-}
-
-function GoogleAuthProviderInner({ children }: GoogleAuthProviderInnerProps) {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    const stored = localStorage.getItem(USER_STORAGE_KEY);
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
-
-  const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem(STORAGE_KEY);
-  });
-
-  const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    if (token && user) {
-      apiHandler.setUser({
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        token: token,
-      });
-    } else {
-      apiHandler.setUser(null);
-    }
-  }, [token, user]);
-
-  const handleSignOut = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(USER_STORAGE_KEY);
-    setToken(null);
-    setUser(null);
-    apiHandler.setUser(null);
-  }, []);
-
-  const googleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      setIsLoading(true);
-      try {
-        const userInfoResponse = await fetch(
-          'https://www.googleapis.com/oauth2/v3/userinfo',
-          {
-            headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-          }
-        );
-        const userInfo = await userInfoResponse.json();
-
-        const authUser: AuthUser = {
-          id: userInfo.sub,
-          email: userInfo.email,
-          name: userInfo.name,
-          picture: userInfo.picture,
-        };
-
-        const accessToken = tokenResponse.access_token;
-
-        localStorage.setItem(STORAGE_KEY, accessToken);
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(authUser));
-
-        setToken(accessToken);
-        setUser(authUser);
-      } catch (error) {
-        console.error('Failed to get user info:', error);
-        handleSignOut();
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    onError: (error) => {
-      console.error('Google login failed:', error);
-      setIsLoading(false);
-    },
-    scope: 'openid email profile',
-    flow: 'implicit',
-  });
-
-  const handleSignIn = useCallback(() => {
-    setIsLoading(true);
-    googleLogin();
-  }, [googleLogin]);
-
-  const value: AuthContextValue = {
-    isAuthenticated: !!token && !!user,
-    isLoading,
-    user,
-    token,
-    authProvider: 'google',
-    signIn: handleSignIn,
-    signInWithEmail: () =>
-      console.warn('Use signIn for Google auth provider'),
-    signOut: handleSignOut,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-interface AuthProviderProps {
-  children: ReactNode;
-  clientId?: string;
-}
-
 // Adapter: bridges ShotGridAuthContext into the shared AuthContext shape so
 // all existing components using useAuth() continue to work unchanged.
 function ShotGridAuthAdapterInner({ children }: { children: ReactNode }) {
@@ -241,24 +104,24 @@ function ShotGridAuthAdapterInner({ children }: { children: ReactNode }) {
     isAuthenticated: sg.isAuthenticated,
     isLoading: sg.isLoading,
     user: sg.user
-      ? {
-          id: String(sg.user.id),
-          email: sg.user.email,
-          name: sg.user.name,
-        }
+      ? { id: String(sg.user.id), email: sg.user.email, name: sg.user.name }
       : null,
     token: sg.token,
     authProvider: 'shotgrid',
     signIn: () => console.warn('Use ShotGridLoginPage for ShotGrid auth'),
-    signInWithEmail: (email: string) =>
-      console.warn(`Use ShotGridLoginPage — signInWithEmail(${email}) is not supported`),
+    signInWithEmail: (email) =>
+      console.warn(`signInWithEmail(${email}) is not supported with ShotGrid PAT auth`),
     signOut: sg.signOut,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function AuthProvider({ children, clientId }: AuthProviderProps) {
+interface AuthProviderProps {
+  children: ReactNode;
+}
+
+export function AuthProvider({ children }: AuthProviderProps) {
   const authProviderType = getAuthProvider();
 
   if (authProviderType === 'shotgrid') {
@@ -269,31 +132,12 @@ export function AuthProvider({ children, clientId }: AuthProviderProps) {
     );
   }
 
-  if (authProviderType === 'none') {
-    return <NoopAuthProviderInner>{children}</NoopAuthProviderInner>;
-  }
-
-  const googleClientId =
-    clientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-
-  if (!googleClientId) {
-    console.warn(
-      'VITE_GOOGLE_CLIENT_ID is not set. Falling back to noop auth.'
-    );
-    return <NoopAuthProviderInner>{children}</NoopAuthProviderInner>;
-  }
-
-  return (
-    <GoogleOAuthProvider clientId={googleClientId}>
-      <GoogleAuthProviderInner>{children}</GoogleAuthProviderInner>
-    </GoogleOAuthProvider>
-  );
+  // AUTH_PROVIDER=none — development/testing only
+  return <NoopAuthProviderInner>{children}</NoopAuthProviderInner>;
 }
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 }
