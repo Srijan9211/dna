@@ -123,12 +123,41 @@ class UserSession:
 
     @classmethod
     def from_dict(cls, data: dict) -> "UserSession":
-        """Reconstruct from a plain dict (MongoDB document or JSON)."""
-        sg_raw = data.pop("shotgrid", None)
-        session = cls(**data)
-        if sg_raw:
-            session.shotgrid = ShotGridCredentials(**sg_raw)
-        return session
+        """Reconstruct from a plain dict (MongoDB document or JSON).
+
+        Generic: automatically deserializes any field whose stored value is a
+        dict and whose declared type is Optional[<SomeDataclass>].  No changes
+        needed here when new provider credential classes are added — just
+        declare the field on UserSession and the right class will be
+        instantiated automatically.
+
+        How it works
+        ------------
+        Python's ``get_type_hints`` returns the actual resolved types for each
+        field.  For Optional[X] (i.e. Union[X, None]) we unwrap the inner type
+        X, check whether it is a dataclass, and if the stored value is a dict
+        we call X(**value) to reconstruct it.  Primitive fields (str, int,
+        float) are passed through unchanged.
+        """
+        import dataclasses as _dc
+        from typing import Union, get_args, get_origin, get_type_hints
+
+        hints = get_type_hints(cls)
+        processed = dict(data)  # work on a copy so we don't mutate the caller's dict
+
+        for field_name, type_hint in hints.items():
+            raw = processed.get(field_name)
+            if not isinstance(raw, dict):
+                continue  # nothing to deserialize for primitive / missing fields
+
+            # Unwrap Optional[X]  →  X
+            origin = get_origin(type_hint)
+            if origin is Union:
+                inner_types = [t for t in get_args(type_hint) if t is not type(None)]
+                if len(inner_types) == 1 and _dc.is_dataclass(inner_types[0]):
+                    processed[field_name] = inner_types[0](**raw)
+
+        return cls(**processed)
 
     # Legacy property aliases — kept so existing call-sites continue to work.
     # Update call-sites to use session.shotgrid.* directly when convenient.
