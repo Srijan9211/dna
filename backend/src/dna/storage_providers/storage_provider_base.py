@@ -177,11 +177,6 @@ class StorageProviderBase:
 
 def get_storage_provider() -> StorageProviderBase:
     """Factory function to get the configured storage provider."""
-    provider_type = os.getenv("STORAGE_PROVIDER", "mongodb")
+    from dna.configsys import get_config, providers
 
-    if provider_type == "mongodb":
-        from dna.storage_providers.mongodb import MongoDBStorageProvider
-
-        return MongoDBStorageProvider()
-
-    raise ValueError(f"Unknown storage provider: {provider_type}")
+    return providers.storage.create(get_config().get("storage").provider)

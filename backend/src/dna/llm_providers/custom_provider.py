@@ -4,7 +4,6 @@ Custom OpenAI Compatible implementation of the LLM provider interface.
 """
 
 import logging
-import os
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -18,6 +17,7 @@ class CustomProvider(LLMProviderBase):
     """Custom OpenAI Compatible implementation of the LLM provider."""
 
     LLM_PROVIDER_NAME = "CUSTOM_LLM"
+    LLM_PROFILE_NAME = "custom"
 
     DEFAULT_MODEL = "llama3.2:latest"
     DEFAULT_URL = "http://host.docker.internal:11434/v1"
@@ -27,7 +27,7 @@ class CustomProvider(LLMProviderBase):
         return AsyncOpenAI(
             # Current openai module version (2.36.0) does not support None or "" for api_key
             api_key=self.api_key or "dna",
-            base_url=os.getenv(f"{self.LLM_PROVIDER_NAME}_URL", self.DEFAULT_URL),
+            base_url=self._profile().url or self.DEFAULT_URL,
             timeout=self.timeout,
         )
 

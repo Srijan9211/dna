@@ -6,20 +6,11 @@ import {
   useCallback,
   type ReactNode,
 } from 'react';
+import { useRuntimeConfig } from './RuntimeConfigContext';
 
 const TRANSCRIPTION_KEY = 'dna-transcription-enabled';
 const AI_KEY = 'dna-ai-enabled';
 const IN_REVIEW_KEY = 'dna-in-review-enabled';
-
-function readEnvOverride(envValue: string | undefined): boolean | null {
-  if (envValue === 'true') return true;
-  if (envValue === 'false') return false;
-  return null;
-}
-
-const ENV_TRANSCRIPTION = readEnvOverride(import.meta.env.VITE_FEATURE_TRANSCRIPTION);
-const ENV_IN_REVIEW = readEnvOverride(import.meta.env.VITE_FEATURE_IN_REVIEW);
-const ENV_AI = readEnvOverride(import.meta.env.VITE_FEATURE_AI);
 
 interface FeatureFlagsContextValue {
   transcriptionEnabled: boolean;
@@ -38,20 +29,28 @@ interface FeatureFlagsContextValue {
 const FeatureFlagsContext = createContext<FeatureFlagsContextValue | null>(null);
 
 export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
+  // A deployment can pin a flag on or off for everyone ("pipeline" lock): from the
+  // server's frontend settings, else the legacy VITE_FEATURE_* build variables.
+  // null means no pin, so the user's own saved choice (or the default) applies.
+  const { features } = useRuntimeConfig();
+  const pinnedTranscription = features.transcription;
+  const pinnedInReview = features.inReview;
+  const pinnedAi = features.ai;
+
   const [transcriptionBase, setTranscriptionState] = useState(() => {
-    if (ENV_TRANSCRIPTION !== null) return ENV_TRANSCRIPTION;
+    if (pinnedTranscription !== null) return pinnedTranscription;
     const stored = localStorage.getItem(TRANSCRIPTION_KEY);
     return stored === null ? true : stored === 'true';
   });
 
   const [aiEnabled, setAiState] = useState(() => {
-    if (ENV_AI !== null) return ENV_AI;
+    if (pinnedAi !== null) return pinnedAi;
     const stored = localStorage.getItem(AI_KEY);
     return stored === null ? true : stored === 'true';
   });
 
   const [inReviewBase, setInReviewState] = useState(() => {
-    if (ENV_IN_REVIEW !== null) return ENV_IN_REVIEW;
+    if (pinnedInReview !== null) return pinnedInReview;
     const stored = localStorage.getItem(IN_REVIEW_KEY);
     return stored === null ? true : stored === 'true';
   });
@@ -63,22 +62,22 @@ export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
   const inReviewEnabled = inReviewBase || transcriptionEnabled;
 
   const setTranscriptionEnabled = useCallback((enabled: boolean) => {
-    if (ENV_TRANSCRIPTION !== null) return;
+    if (pinnedTranscription !== null) return;
     localStorage.setItem(TRANSCRIPTION_KEY, String(enabled));
     setTranscriptionState(enabled);
-  }, []);
+  }, [pinnedTranscription]);
 
   const setAiEnabled = useCallback((enabled: boolean) => {
-    if (ENV_AI !== null) return;
+    if (pinnedAi !== null) return;
     localStorage.setItem(AI_KEY, String(enabled));
     setAiState(enabled);
-  }, []);
+  }, [pinnedAi]);
 
   const setInReviewEnabled = useCallback((enabled: boolean) => {
-    if (ENV_IN_REVIEW !== null) return;
+    if (pinnedInReview !== null) return;
     localStorage.setItem(IN_REVIEW_KEY, String(enabled));
     setInReviewState(enabled);
-  }, []);
+  }, [pinnedInReview]);
 
   return (
     <FeatureFlagsContext.Provider
@@ -86,17 +85,17 @@ export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
         transcriptionEnabled,
         aiEnabled,
         inReviewEnabled,
-        transcriptionLocked: ENV_TRANSCRIPTION !== null || aiEnabled,
-        aiLocked: ENV_AI !== null,
-        inReviewLocked: ENV_IN_REVIEW !== null || transcriptionEnabled,
+        transcriptionLocked: pinnedTranscription !== null || aiEnabled,
+        aiLocked: pinnedAi !== null,
+        inReviewLocked: pinnedInReview !== null || transcriptionEnabled,
         transcriptionLockReason:
-          ENV_TRANSCRIPTION !== null
+          pinnedTranscription !== null
             ? 'pipeline'
             : aiEnabled
               ? 'ai'
               : null,
         inReviewLockReason:
-          ENV_IN_REVIEW !== null
+          pinnedInReview !== null
             ? 'pipeline'
             : transcriptionEnabled
               ? 'transcription'

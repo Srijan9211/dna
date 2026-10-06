@@ -4,7 +4,6 @@ Gemini implementation of the LLM provider interface.
 """
 
 import logging
-import os
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -26,7 +25,7 @@ class GeminiProvider(LLMProviderBase):
         """Construct an instance of the LLM provider's client."""
         return AsyncOpenAI(
             api_key=self.api_key,
-            base_url=os.getenv(f"{self.LLM_PROVIDER_NAME }_URL", self.DEFAULT_URL),
+            base_url=self._profile().url or self.DEFAULT_URL,
             timeout=self.timeout,
         )
 

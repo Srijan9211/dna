@@ -13,9 +13,10 @@ parsed into structured data.
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
+
+from dna.configsys import get_config
 
 _CONFIG_DIR = Path(__file__).resolve().parent / "config"
 _DEFAULT_GLOBAL = _CONFIG_DIR / "glossary_global.yaml"
@@ -23,7 +24,7 @@ _DEFAULT_GLOBAL = _CONFIG_DIR / "glossary_global.yaml"
 
 def default_glossary_global_path() -> Path:
     """Path to the global glossary (override with DNA_GLOSSARY_GLOBAL_PATH)."""
-    override = os.environ.get("DNA_GLOSSARY_GLOBAL_PATH")
+    override = get_config().get("content").glossary_global_path
     if override:
         return Path(override).expanduser().resolve()
     return _DEFAULT_GLOBAL.resolve()

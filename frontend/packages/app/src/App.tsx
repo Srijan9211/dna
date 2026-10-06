@@ -1,27 +1,35 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Flex, Spinner } from '@radix-ui/themes';
-import { Playlist, Project, Version } from '@dna/core';
+import {
+  Playlist,
+  Project,
+  Version,
+  parseEntityId,
+  type EntityId,
+} from '@dna/core';
 import {
   Layout,
   ContentArea,
   ProjectSelector,
-  ShotGridLoginPage,
+  TrackerLoginPage,
 } from './components';
-import { useAuth } from './contexts';
+import { useAuth, isSessionAuth } from './contexts';
 import {
   useGetPlaylistsForProject,
   useGetProjectsForUser,
   useGetVersionsForPlaylist,
 } from './api';
 import { usePlaylistMetadata } from './hooks/usePlaylistMetadata';
+import { ConfigAdminPage } from './components/admin/ConfigAdminPage';
+import { isAdminRoute } from './components/admin/trackerSetupLogic';
 
 // The selected project, playlist and version are kept in the query string,
 // so a reload returns to the same playlist page.
 interface UrlSelection {
-  projectId: number | null;
-  playlistId: number | null;
-  versionId: number | null;
+  projectId: EntityId | null;
+  playlistId: EntityId | null;
+  versionId: EntityId | null;
 }
 
 const EMPTY_URL_SELECTION: UrlSelection = {
@@ -30,10 +38,8 @@ const EMPTY_URL_SELECTION: UrlSelection = {
   versionId: null,
 };
 
-function parseId(value: string | null): number | null {
-  const id = Number(value);
-  return Number.isInteger(id) && id > 0 ? id : null;
-}
+// Ids are opaque (a number for ShotGrid, a string for AYON); see parseEntityId.
+const parseId = parseEntityId;
 
 function readSelectionFromUrl(): UrlSelection {
   const params = new URLSearchParams(window.location.search);
@@ -46,7 +52,7 @@ function readSelectionFromUrl(): UrlSelection {
 
 function writeSelectionToUrl(selection: UrlSelection): void {
   const params = new URLSearchParams(window.location.search);
-  const entries: [string, number | null][] = [
+  const entries: [string, EntityId | null][] = [
     ['project', selection.projectId],
     ['playlist', selection.playlistId],
     ['version', selection.versionId],
@@ -222,8 +228,13 @@ function App() {
   };
 
   // ShotGrid auth: show login page until authenticated
-  if (authProvider === 'shotgrid' && (isLoading || !isAuthenticated)) {
-    return <ShotGridLoginPage />;
+  if (isSessionAuth(authProvider) && (isLoading || !isAuthenticated)) {
+    return <TrackerLoginPage />;
+  }
+
+  // The configuration admin pages (?admin=config), for configuration administrators.
+  if (isAdminRoute(window.location.search)) {
+    return <ConfigAdminPage />;
   }
 
   if (isRestoring && restoreEmail) {

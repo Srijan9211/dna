@@ -1,5 +1,6 @@
+import type { EntityId } from '@dna/core';
 export type ProdtrackTabSyncResult =
-  | { ok: true; tabId?: number }
+  | { ok: true; tabId?: EntityId }
   | {
       ok: false;
       reason:
@@ -60,14 +61,14 @@ function sendExternalMessage(
 
 export type OpenVersionOptions = {
   /** Last known controlled tab id from a prior OPEN_VERSION; forwarded to the extension */
-  tabId?: number;
+  tabId?: EntityId;
   /** Defaults to 800 */
   timeoutMs?: number;
 };
 
 function parseOpenVersionResponse(
   raw: unknown
-): { ok: true; tabId?: number } | null {
+): { ok: true; tabId?: EntityId } | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   if (o.ok !== true) return null;
@@ -145,7 +146,7 @@ export async function openProdtrackVersionInExtension(
   const timeoutMs = openOpts.timeoutMs ?? 800;
   const lastKnownTabId = openOpts.tabId;
 
-  const message: { type: string; url: string; tabId?: number } = {
+  const message: { type: string; url: string; tabId?: EntityId } = {
     type: 'OPEN_VERSION',
     url,
   };

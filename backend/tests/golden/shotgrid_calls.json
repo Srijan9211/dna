@@ -1,0 +1,1948 @@
+{
+ "add_version_to_playlist_new": {
+  "calls": [
+   {
+    "args": [
+     "Playlist"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "versions"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       100
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Playlist",
+     100
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "data": {
+      "versions": [
+       {
+        "id": 1001,
+        "name": "sh010_v001",
+        "type": "Version"
+       },
+       {
+        "id": 1002,
+        "name": "sh010_v002",
+        "type": "Version"
+       },
+       {
+        "id": 1003,
+        "type": "Version"
+       }
+      ]
+     }
+    },
+    "method": "update"
+   }
+  ],
+  "result": true
+ },
+ "add_version_to_playlist_present": {
+  "calls": [
+   {
+    "args": [
+     "Playlist"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "versions"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       100
+      ]
+     ]
+    },
+    "method": "find_one"
+   }
+  ],
+  "result": true
+ },
+ "attach_file": {
+  "calls": [
+   {
+    "args": [
+     "Note",
+     900,
+     "/tmp/f.txt"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "display_name": "f.txt",
+     "field_name": "attachments"
+    },
+    "method": "upload"
+   }
+  ],
+  "result": true
+ },
+ "create_playlist": {
+  "calls": [
+   {
+    "args": [
+     "Playlist"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "data": {
+      "code": "new-list",
+      "project": {
+       "id": 10,
+       "type": "Project"
+      }
+     }
+    },
+    "method": "create"
+   }
+  ],
+  "result": {
+   "code": "new-list",
+   "created_at": null,
+   "description": null,
+   "id": 5001,
+   "project": {
+    "id": 10,
+    "type": "Project"
+   },
+   "type": "Playlist",
+   "updated_at": null,
+   "versions": []
+  }
+ },
+ "find_unknown_field": {
+  "calls": [],
+  "result": {
+   "__raises__": "ValueError: Unknown field 'bogus' for 'version'"
+  }
+ },
+ "find_unsupported_type": {
+  "calls": [],
+  "result": {
+   "__raises__": "ValueError: Unsupported entity type: nope"
+  }
+ },
+ "find_versions_filtered": {
+  "calls": [
+   {
+    "args": [
+     "Version"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "created_at",
+      "description",
+      "entity",
+      "id",
+      "image",
+      "notes",
+      "project",
+      "sg_path_to_frames",
+      "sg_path_to_movie",
+      "sg_status_list",
+      "sg_task",
+      "updated_at",
+      "user"
+     ],
+     "filters": [
+      [
+       "sg_status_list",
+       "is",
+       "rev"
+      ]
+     ],
+     "limit": 5
+    },
+    "method": "find"
+   },
+   {
+    "args": [
+     "Shot"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "description",
+      "id",
+      "project",
+      "tasks"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       500
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Task"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "content",
+      "entity",
+      "id",
+      "project",
+      "sg_status_list",
+      "step"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       600
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Shot"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "description",
+      "id",
+      "project",
+      "tasks"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       500
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Task"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "content",
+      "entity",
+      "id",
+      "project",
+      "sg_status_list",
+      "step"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       600
+      ]
+     ]
+    },
+    "method": "find_one"
+   }
+  ],
+  "result": [
+   {
+    "created_at": "2026-01-01T10:00:00Z",
+    "description": "take 1",
+    "entity": {
+     "description": "Opening shot",
+     "id": 500,
+     "name": "sh010",
+     "project": {
+      "id": 10,
+      "name": "Proj",
+      "type": "Project"
+     },
+     "tasks": [
+      {
+       "entity": null,
+       "id": 600,
+       "name": "anim",
+       "pipeline_step": null,
+       "project": null,
+       "status": null,
+       "type": "Task"
+      }
+     ],
+     "type": "Shot"
+    },
+    "frame_path": "/frames/v1.####.exr",
+    "id": 1001,
+    "movie_path": "/movies/v1.mov",
+    "name": "sh010_v001",
+    "notes": [],
+    "prodtrack_detail_url": null,
+    "prodtrack_entity_detail_url": null,
+    "project": {
+     "id": 10,
+     "name": "Proj",
+     "type": "Project"
+    },
+    "status": "rev",
+    "task": {
+     "entity": {
+      "description": null,
+      "id": 500,
+      "name": "sh010",
+      "project": null,
+      "tasks": [],
+      "type": "Shot"
+     },
+     "id": 600,
+     "name": "anim",
+     "pipeline_step": {
+      "id": 7,
+      "name": "Animation",
+      "type": "Step"
+     },
+     "project": {
+      "id": 10,
+      "name": "Proj",
+      "type": "Project"
+     },
+     "status": "ip",
+     "type": "Task"
+    },
+    "thumbnail": "https://thumbs/v1.png",
+    "type": "Version",
+    "updated_at": "2026-01-01T11:00:00Z",
+    "user": {
+     "id": 1,
+     "name": "Ann Artist",
+     "type": "HumanUser"
+    }
+   },
+   {
+    "created_at": "2026-01-02T10:00:00Z",
+    "description": "take 2",
+    "entity": {
+     "description": "Opening shot",
+     "id": 500,
+     "name": "sh010",
+     "project": {
+      "id": 10,
+      "name": "Proj",
+      "type": "Project"
+     },
+     "tasks": [
+      {
+       "entity": null,
+       "id": 600,
+       "name": "anim",
+       "pipeline_step": null,
+       "project": null,
+       "status": null,
+       "type": "Task"
+      }
+     ],
+     "type": "Shot"
+    },
+    "frame_path": "/frames/v2.####.exr",
+    "id": 1002,
+    "movie_path": "/movies/v2.mov",
+    "name": "sh010_v002",
+    "notes": [],
+    "prodtrack_detail_url": null,
+    "prodtrack_entity_detail_url": null,
+    "project": {
+     "id": 10,
+     "name": "Proj",
+     "type": "Project"
+    },
+    "status": "rev",
+    "task": {
+     "entity": {
+      "description": null,
+      "id": 500,
+      "name": "sh010",
+      "project": null,
+      "tasks": [],
+      "type": "Shot"
+     },
+     "id": 600,
+     "name": "anim",
+     "pipeline_step": {
+      "id": 7,
+      "name": "Animation",
+      "type": "Step"
+     },
+     "project": {
+      "id": 10,
+      "name": "Proj",
+      "type": "Project"
+     },
+     "status": "ip",
+     "type": "Task"
+    },
+    "thumbnail": "https://thumbs/v2.png",
+    "type": "Version",
+    "updated_at": "2026-01-02T11:00:00Z",
+    "user": {
+     "id": 1,
+     "name": "Ann Artist",
+     "type": "HumanUser"
+    }
+   }
+  ]
+ },
+ "get_entity_missing": {
+  "calls": [
+   {
+    "args": [
+     "Shot"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "description",
+      "id",
+      "project",
+      "tasks"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       99999
+      ]
+     ]
+    },
+    "method": "find_one"
+   }
+  ],
+  "result": {
+   "__raises__": "ValueError: Entity not found: shot 99999"
+  }
+ },
+ "get_entity_shot": {
+  "calls": [
+   {
+    "args": [
+     "Shot"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "description",
+      "id",
+      "project",
+      "tasks"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       500
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Task"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "content",
+      "entity",
+      "id",
+      "project",
+      "sg_status_list",
+      "step"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       600
+      ]
+     ]
+    },
+    "method": "find_one"
+   }
+  ],
+  "result": {
+   "description": "Opening shot",
+   "id": 500,
+   "name": "sh010",
+   "project": {
+    "id": 10,
+    "name": "Proj",
+    "type": "Project"
+   },
+   "tasks": [
+    {
+     "entity": {
+      "description": null,
+      "id": 500,
+      "name": "sh010",
+      "project": null,
+      "tasks": [],
+      "type": "Shot"
+     },
+     "id": 600,
+     "name": "anim",
+     "pipeline_step": {
+      "id": 7,
+      "name": "Animation",
+      "type": "Step"
+     },
+     "project": {
+      "id": 10,
+      "name": "Proj",
+      "type": "Project"
+     },
+     "status": "ip",
+     "type": "Task"
+    }
+   ],
+   "type": "Shot"
+  }
+ },
+ "get_entity_unknown_type": {
+  "calls": [],
+  "result": {
+   "__raises__": "ValueError: Unknown entity type: nope"
+  }
+ },
+ "get_entity_version": {
+  "calls": [
+   {
+    "args": [
+     "Version"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "created_at",
+      "description",
+      "entity",
+      "id",
+      "image",
+      "notes",
+      "project",
+      "sg_path_to_frames",
+      "sg_path_to_movie",
+      "sg_status_list",
+      "sg_task",
+      "updated_at",
+      "user"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       1001
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Shot"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "description",
+      "id",
+      "project",
+      "tasks"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       500
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Task"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "content",
+      "entity",
+      "id",
+      "project",
+      "sg_status_list",
+      "step"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       600
+      ]
+     ]
+    },
+    "method": "find_one"
+   }
+  ],
+  "result": {
+   "created_at": "2026-01-01T10:00:00Z",
+   "description": "take 1",
+   "entity": {
+    "description": "Opening shot",
+    "id": 500,
+    "name": "sh010",
+    "project": {
+     "id": 10,
+     "name": "Proj",
+     "type": "Project"
+    },
+    "tasks": [
+     {
+      "entity": null,
+      "id": 600,
+      "name": "anim",
+      "pipeline_step": null,
+      "project": null,
+      "status": null,
+      "type": "Task"
+     }
+    ],
+    "type": "Shot"
+   },
+   "frame_path": "/frames/v1.####.exr",
+   "id": 1001,
+   "movie_path": "/movies/v1.mov",
+   "name": "sh010_v001",
+   "notes": [],
+   "prodtrack_detail_url": null,
+   "prodtrack_entity_detail_url": null,
+   "project": {
+    "id": 10,
+    "name": "Proj",
+    "type": "Project"
+   },
+   "status": "rev",
+   "task": {
+    "entity": {
+     "description": null,
+     "id": 500,
+     "name": "sh010",
+     "project": null,
+     "tasks": [],
+     "type": "Shot"
+    },
+    "id": 600,
+    "name": "anim",
+    "pipeline_step": {
+     "id": 7,
+     "name": "Animation",
+     "type": "Step"
+    },
+    "project": {
+     "id": 10,
+     "name": "Proj",
+     "type": "Project"
+    },
+    "status": "ip",
+    "type": "Task"
+   },
+   "thumbnail": "https://thumbs/v1.png",
+   "type": "Version",
+   "updated_at": "2026-01-01T11:00:00Z",
+   "user": {
+    "id": 1,
+    "name": "Ann Artist",
+    "type": "HumanUser"
+   }
+  }
+ },
+ "get_entity_version_shallow": {
+  "calls": [
+   {
+    "args": [
+     "Version"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "created_at",
+      "description",
+      "entity",
+      "id",
+      "image",
+      "notes",
+      "project",
+      "sg_path_to_frames",
+      "sg_path_to_movie",
+      "sg_status_list",
+      "sg_task",
+      "updated_at",
+      "user"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       1001
+      ]
+     ]
+    },
+    "method": "find_one"
+   }
+  ],
+  "result": {
+   "created_at": "2026-01-01T10:00:00Z",
+   "description": "take 1",
+   "entity": {
+    "description": null,
+    "id": 500,
+    "name": "sh010",
+    "project": null,
+    "tasks": [],
+    "type": "Shot"
+   },
+   "frame_path": "/frames/v1.####.exr",
+   "id": 1001,
+   "movie_path": "/movies/v1.mov",
+   "name": "sh010_v001",
+   "notes": [],
+   "prodtrack_detail_url": null,
+   "prodtrack_entity_detail_url": null,
+   "project": {
+    "id": 10,
+    "name": "Proj",
+    "type": "Project"
+   },
+   "status": "rev",
+   "task": {
+    "entity": null,
+    "id": 600,
+    "name": "anim",
+    "pipeline_step": null,
+    "project": null,
+    "status": null,
+    "type": "Task"
+   },
+   "thumbnail": "https://thumbs/v1.png",
+   "type": "Version",
+   "updated_at": "2026-01-01T11:00:00Z",
+   "user": {
+    "id": 1,
+    "name": "Ann Artist",
+    "type": "HumanUser"
+   }
+  }
+ },
+ "get_playlists_for_project": {
+  "calls": [
+   {
+    "args": [
+     "Playlist"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "created_at",
+      "description",
+      "id",
+      "project",
+      "updated_at"
+     ],
+     "filters": [
+      [
+       "project",
+       "is",
+       {
+        "id": 10,
+        "type": "Project"
+       }
+      ]
+     ],
+     "limit": 0
+    },
+    "method": "find"
+   }
+  ],
+  "result": [
+   {
+    "code": "dailies",
+    "created_at": "2026-01-03T09:00:00Z",
+    "description": "Daily review",
+    "id": 100,
+    "project": {
+     "id": 10,
+     "name": "Proj",
+     "type": "Project"
+    },
+    "type": "Playlist",
+    "updated_at": "2026-01-03T09:30:00Z",
+    "versions": []
+   }
+  ]
+ },
+ "get_projects_for_user": {
+  "calls": [
+   {
+    "args": [
+     "HumanUser"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "email",
+      "id",
+      "name"
+     ],
+     "filters": [
+      [
+       "email",
+       "is",
+       "ann@x.com"
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Project"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "id",
+      "name"
+     ],
+     "filters": [
+      [
+       "users",
+       "is",
+       {
+        "email": "ann@x.com",
+        "id": 1,
+        "name": "Ann Artist",
+        "type": null
+       }
+      ]
+     ],
+     "limit": 0
+    },
+    "method": "find"
+   }
+  ],
+  "result": [
+   {
+    "id": 10,
+    "name": "Proj",
+    "type": "Project"
+   }
+  ]
+ },
+ "get_user_by_email": {
+  "calls": [
+   {
+    "args": [
+     "HumanUser"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "email",
+      "id",
+      "login",
+      "name"
+     ],
+     "filters": [
+      [
+       "email",
+       "is",
+       "ann@x.com"
+      ]
+     ]
+    },
+    "method": "find_one"
+   }
+  ],
+  "result": {
+   "email": "ann@x.com",
+   "id": 1,
+   "login": "ann",
+   "name": "Ann Artist",
+   "type": "User"
+  }
+ },
+ "get_user_by_email_missing": {
+  "calls": [
+   {
+    "args": [
+     "HumanUser"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "email",
+      "id",
+      "login",
+      "name"
+     ],
+     "filters": [
+      [
+       "email",
+       "is",
+       "no@x.com"
+      ]
+     ]
+    },
+    "method": "find_one"
+   }
+  ],
+  "result": {
+   "__raises__": "ValueError: User not found: no@x.com"
+  }
+ },
+ "get_version_statuses": {
+  "calls": [
+   {
+    "args": [
+     "Version",
+     "sg_status_list"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "project_entity": {
+      "id": 10,
+      "type": "Project"
+     }
+    },
+    "method": "schema_field_read"
+   }
+  ],
+  "result": [
+   {
+    "code": "rev",
+    "name": "Pending Review"
+   },
+   {
+    "code": "apr",
+    "name": "Approved"
+   },
+   {
+    "code": "ip",
+    "name": "ip"
+   }
+  ]
+ },
+ "get_version_statuses_no_project": {
+  "calls": [
+   {
+    "args": [
+     "Version",
+     "sg_status_list"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "project_entity": null
+    },
+    "method": "schema_field_read"
+   }
+  ],
+  "result": [
+   {
+    "code": "rev",
+    "name": "Pending Review"
+   },
+   {
+    "code": "apr",
+    "name": "Approved"
+   },
+   {
+    "code": "ip",
+    "name": "ip"
+   }
+  ]
+ },
+ "get_versions_empty_playlist": {
+  "calls": [
+   {
+    "args": [
+     "Playlist"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "versions"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       404
+      ]
+     ]
+    },
+    "method": "find_one"
+   }
+  ],
+  "result": []
+ },
+ "get_versions_for_playlist": {
+  "calls": [
+   {
+    "args": [
+     "Playlist"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "versions"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       100
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Version"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "created_at",
+      "description",
+      "entity",
+      "id",
+      "image",
+      "notes",
+      "project",
+      "sg_path_to_frames",
+      "sg_path_to_movie",
+      "sg_status_list",
+      "sg_task",
+      "updated_at",
+      "user"
+     ],
+     "filters": [
+      [
+       "id",
+       "in",
+       [
+        1001,
+        1002
+       ]
+      ]
+     ],
+     "limit": 0
+    },
+    "method": "find"
+   },
+   {
+    "args": [
+     "Task"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "content",
+      "id",
+      "project",
+      "sg_status_list",
+      "step"
+     ],
+     "filters": [
+      [
+       "id",
+       "in",
+       [
+        600
+       ]
+      ]
+     ],
+     "limit": 0
+    },
+    "method": "find"
+   },
+   {
+    "args": [
+     "Note"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "content",
+      "created_at",
+      "created_by",
+      "created_by.HumanUser.email",
+      "id",
+      "note_links",
+      "subject"
+     ],
+     "filters": [
+      [
+       "note_links",
+       "is",
+       {
+        "id": 100,
+        "type": "Playlist"
+       }
+      ]
+     ],
+     "limit": 0
+    },
+    "method": "find"
+   }
+  ],
+  "result": [
+   {
+    "created_at": "2026-01-01T10:00:00Z",
+    "description": "take 1",
+    "entity": {
+     "description": null,
+     "id": 500,
+     "name": "sh010",
+     "project": null,
+     "tasks": [],
+     "type": "Shot"
+    },
+    "frame_path": "/frames/v1.####.exr",
+    "id": 1001,
+    "movie_path": "/movies/v1.mov",
+    "name": "sh010_v001",
+    "notes": [
+     {
+      "author": {
+       "email": "ann@x.com",
+       "id": 1,
+       "login": null,
+       "name": "Ann Artist",
+       "type": "User"
+      },
+      "content": "Content",
+      "id": 900,
+      "note_links": [
+       {
+        "code": null,
+        "created_at": null,
+        "description": null,
+        "id": 100,
+        "project": null,
+        "type": "Playlist",
+        "updated_at": null,
+        "versions": []
+       },
+       {
+        "created_at": null,
+        "description": null,
+        "entity": null,
+        "frame_path": null,
+        "id": 1001,
+        "movie_path": null,
+        "name": null,
+        "notes": [],
+        "prodtrack_detail_url": null,
+        "prodtrack_entity_detail_url": null,
+        "project": null,
+        "status": null,
+        "task": null,
+        "thumbnail": null,
+        "type": "Version",
+        "updated_at": null,
+        "user": null
+       }
+      ],
+      "project": null,
+      "subject": "Subj",
+      "type": "Note"
+     }
+    ],
+    "prodtrack_detail_url": "https://studio.shotgrid.autodesk.com/detail/Version/1001",
+    "prodtrack_entity_detail_url": "https://studio.shotgrid.autodesk.com/detail/Shot/500",
+    "project": {
+     "id": 10,
+     "name": "Proj",
+     "type": "Project"
+    },
+    "status": "rev",
+    "task": {
+     "entity": null,
+     "id": 600,
+     "name": "anim",
+     "pipeline_step": {
+      "id": 7,
+      "name": "Animation",
+      "type": "Step"
+     },
+     "project": {
+      "id": 10,
+      "name": "Proj",
+      "type": "Project"
+     },
+     "status": "ip",
+     "type": "Task"
+    },
+    "thumbnail": "https://thumbs/v1.png",
+    "type": "Version",
+    "updated_at": "2026-01-01T11:00:00Z",
+    "user": {
+     "id": 1,
+     "name": "Ann Artist",
+     "type": "HumanUser"
+    }
+   },
+   {
+    "created_at": "2026-01-02T10:00:00Z",
+    "description": "take 2",
+    "entity": {
+     "description": null,
+     "id": 500,
+     "name": "sh010",
+     "project": null,
+     "tasks": [],
+     "type": "Shot"
+    },
+    "frame_path": "/frames/v2.####.exr",
+    "id": 1002,
+    "movie_path": "/movies/v2.mov",
+    "name": "sh010_v002",
+    "notes": [],
+    "prodtrack_detail_url": "https://studio.shotgrid.autodesk.com/detail/Version/1002",
+    "prodtrack_entity_detail_url": "https://studio.shotgrid.autodesk.com/detail/Shot/500",
+    "project": {
+     "id": 10,
+     "name": "Proj",
+     "type": "Project"
+    },
+    "status": "rev",
+    "task": {
+     "entity": null,
+     "id": 600,
+     "name": "anim",
+     "pipeline_step": {
+      "id": 7,
+      "name": "Animation",
+      "type": "Step"
+     },
+     "project": {
+      "id": 10,
+      "name": "Proj",
+      "type": "Project"
+     },
+     "status": "ip",
+     "type": "Task"
+    },
+    "thumbnail": "https://thumbs/v2.png",
+    "type": "Version",
+    "updated_at": "2026-01-02T11:00:00Z",
+    "user": {
+     "id": 1,
+     "name": "Ann Artist",
+     "type": "HumanUser"
+    }
+   }
+  ]
+ },
+ "publish_note": {
+  "calls": [
+   {
+    "args": [
+     "Shot"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "description",
+      "id",
+      "project",
+      "tasks"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       500
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Version"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "project"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       1001
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Note"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "id"
+     ],
+     "filters": [
+      [
+       "project",
+       "is",
+       {
+        "id": 10,
+        "name": "Proj",
+        "type": "Project"
+       }
+      ],
+      [
+       "note_links",
+       "is",
+       {
+        "id": 1001,
+        "type": "Version"
+       }
+      ],
+      [
+       "subject",
+       "is",
+       "Review"
+      ],
+      [
+       "content",
+       "is",
+       "Looks good"
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Note"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "data": {
+      "addressings_cc": [
+       {
+        "id": 2,
+        "type": "HumanUser"
+       }
+      ],
+      "addressings_to": [
+       {
+        "id": 1,
+        "type": "HumanUser"
+       }
+      ],
+      "content": "Looks good",
+      "note_links": [
+       {
+        "id": 1001,
+        "type": "Version"
+       },
+       {
+        "id": 500,
+        "type": "Shot"
+       }
+      ],
+      "project": {
+       "id": 10,
+       "name": "Proj",
+       "type": "Project"
+      },
+      "subject": "Review"
+     }
+    },
+    "method": "create"
+   },
+   {
+    "args": [
+     "Version",
+     1001
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "data": {
+      "sg_status_list": "apr"
+     }
+    },
+    "method": "update"
+   }
+  ],
+  "result": 5002
+ },
+ "publish_note_as_author": {
+  "calls": [
+   {
+    "args": [
+     "Version"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "project"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       1002
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Note"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "id"
+     ],
+     "filters": [
+      [
+       "project",
+       "is",
+       {
+        "id": 10,
+        "name": "Proj",
+        "type": "Project"
+       }
+      ],
+      [
+       "note_links",
+       "is",
+       {
+        "id": 1002,
+        "type": "Version"
+       }
+      ],
+      [
+       "subject",
+       "is",
+       "By Bob"
+      ],
+      [
+       "content",
+       "is",
+       "Author note"
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "HumanUser"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "email",
+      "id",
+      "login",
+      "name"
+     ],
+     "filters": [
+      [
+       "email",
+       "is",
+       "bob@x.com"
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Note"
+    ],
+    "conn": "sudo:bob",
+    "kwargs": {
+     "data": {
+      "addressings_cc": [],
+      "addressings_to": [
+       {
+        "id": 1,
+        "type": "HumanUser"
+       }
+      ],
+      "content": "Author note",
+      "note_links": [
+       {
+        "id": 1002,
+        "type": "Version"
+       }
+      ],
+      "project": {
+       "id": 10,
+       "name": "Proj",
+       "type": "Project"
+      },
+      "subject": "By Bob"
+     }
+    },
+    "method": "create"
+   }
+  ],
+  "result": 5001
+ },
+ "publish_note_duplicate": {
+  "calls": [
+   {
+    "args": [
+     "Version"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "project"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       1001
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Note"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "id"
+     ],
+     "filters": [
+      [
+       "project",
+       "is",
+       {
+        "id": 10,
+        "name": "Proj",
+        "type": "Project"
+       }
+      ],
+      [
+       "note_links",
+       "is",
+       {
+        "id": 1001,
+        "type": "Version"
+       }
+      ],
+      [
+       "subject",
+       "is",
+       "Subj"
+      ],
+      [
+       "content",
+       "is",
+       "Content"
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Version",
+     1001
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "data": {
+      "sg_status_list": "apr"
+     }
+    },
+    "method": "update"
+   }
+  ],
+  "result": 900
+ },
+ "publish_note_unknown_author": {
+  "calls": [
+   {
+    "args": [
+     "Version"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "project"
+     ],
+     "filters": [
+      [
+       "id",
+       "is",
+       1002
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "Note"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "id"
+     ],
+     "filters": [
+      [
+       "project",
+       "is",
+       {
+        "id": 10,
+        "name": "Proj",
+        "type": "Project"
+       }
+      ],
+      [
+       "note_links",
+       "is",
+       {
+        "id": 1002,
+        "type": "Version"
+       }
+      ],
+      [
+       "subject",
+       "is",
+       "y"
+      ],
+      [
+       "content",
+       "is",
+       "x"
+      ]
+     ]
+    },
+    "method": "find_one"
+   },
+   {
+    "args": [
+     "HumanUser"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "email",
+      "id",
+      "login",
+      "name"
+     ],
+     "filters": [
+      [
+       "email",
+       "is",
+       "ghost@x.com"
+      ]
+     ]
+    },
+    "method": "find_one"
+   }
+  ],
+  "result": {
+   "__raises__": "UserNotFoundError: Author not found in ShotGrid: ghost@x.com"
+  }
+ },
+ "publish_transcript": {
+  "calls": [
+   {
+    "args": [
+     "CustomEntity05"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "data": {
+      "code": "transcript-1001-2026-01-03",
+      "project": {
+       "id": 10,
+       "type": "Project"
+      },
+      "sg_meeting_date": "2026-01-03",
+      "sg_meeting_id": "m-1",
+      "sg_platform": "meet",
+      "sg_playlist": {
+       "id": 100,
+       "type": "Playlist"
+      },
+      "sg_transcript_body": "hello world",
+      "sg_version_in_review": {
+       "id": 1001,
+       "type": "Version"
+      }
+     }
+    },
+    "method": "create"
+   }
+  ],
+  "result": 5003
+ },
+ "search_all_types": {
+  "calls": [
+   {
+    "args": [
+     "HumanUser"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "email",
+      "id",
+      "name"
+     ],
+     "filters": [
+      [
+       "name",
+       "contains",
+       "a"
+      ]
+     ],
+     "limit": 7
+    },
+    "method": "find"
+   },
+   {
+    "args": [
+     "Shot"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "description",
+      "id",
+      "project"
+     ],
+     "filters": [
+      [
+       "code",
+       "contains",
+       "a"
+      ],
+      [
+       "project",
+       "is",
+       {
+        "id": 10,
+        "type": "Project"
+       }
+      ]
+     ],
+     "limit": 7
+    },
+    "method": "find"
+   },
+   {
+    "args": [
+     "Asset"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "description",
+      "id",
+      "project"
+     ],
+     "filters": [
+      [
+       "code",
+       "contains",
+       "a"
+      ],
+      [
+       "project",
+       "is",
+       {
+        "id": 10,
+        "type": "Project"
+       }
+      ]
+     ],
+     "limit": 7
+    },
+    "method": "find"
+   },
+   {
+    "args": [
+     "Version"
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "fields": [
+      "code",
+      "description",
+      "id",
+      "project"
+     ],
+     "filters": [
+      [
+       "code",
+       "contains",
+       "a"
+      ],
+      [
+       "project",
+       "is",
+       {
+        "id": 10,
+        "type": "Project"
+       }
+      ]
+     ],
+     "limit": 7
+    },
+    "method": "find"
+   }
+  ],
+  "result": [
+   {
+    "email": "ann@x.com",
+    "id": 1,
+    "name": "Ann Artist",
+    "type": "User"
+   }
+  ]
+ },
+ "search_unsupported": {
+  "calls": [],
+  "result": {
+   "__raises__": "ValueError: Unsupported entity type: nope"
+  }
+ },
+ "update_note": {
+  "calls": [
+   {
+    "args": [
+     "Note",
+     900
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "data": {
+      "content": "new text",
+      "subject": "new subj"
+     }
+    },
+    "method": "update"
+   },
+   {
+    "args": [
+     "Version",
+     1001
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "data": {
+      "sg_status_list": "apr"
+     }
+    },
+    "method": "update"
+   }
+  ],
+  "result": true
+ },
+ "update_transcript": {
+  "calls": [
+   {
+    "args": [
+     "CustomEntity05",
+     5001
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "data": {
+      "sg_meeting_date": "2026-01-04",
+      "sg_transcript_body": "edited"
+     }
+    },
+    "method": "update"
+   }
+  ],
+  "result": true
+ },
+ "update_version_status": {
+  "calls": [
+   {
+    "args": [
+     "Version",
+     1001
+    ],
+    "conn": "sudo:ann",
+    "kwargs": {
+     "data": {
+      "sg_status_list": "apr"
+     }
+    },
+    "method": "update"
+   }
+  ],
+  "result": true
+ }
+}

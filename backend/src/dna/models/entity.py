@@ -10,6 +10,7 @@ from typing import Any, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from dna.prodtrack_providers.prodtrack_provider_base import get_prodtrack_provider
+from dna.models.ids import EntityId
 
 
 class EntityBase(BaseModel):
@@ -19,7 +20,7 @@ class EntityBase(BaseModel):
         from_attributes=True,
         populate_by_name=True,
     )
-    id: int = Field(description="Entity ID")
+    id: EntityId = Field(description="Entity ID")
 
     @computed_field
     @property

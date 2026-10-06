@@ -9,6 +9,7 @@ swaps the glossary the AI receives as context.
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
+from dna.models.ids import EntityId
 
 
 class ProjectGlossaryUpdate(BaseModel):
@@ -26,7 +27,7 @@ class ProjectGlossary(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str = Field(alias="_id")
-    project_id: int
+    project_id: EntityId
     content: str = ""
     updated_at: datetime
     created_at: datetime

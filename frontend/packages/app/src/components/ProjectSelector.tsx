@@ -9,6 +9,7 @@ import {
   StyledSelectContent,
 } from './FormInputs';
 import { useAuth } from '../contexts';
+import { useLabels } from '../hooks/useLabels';
 
 export const STORAGE_KEYS = {
   USER_EMAIL: 'dna_user_email',
@@ -294,6 +295,7 @@ export function clearUserSession(): void {
 }
 
 export function ProjectSelector({ onSelectionComplete }: ProjectSelectorProps) {
+  const label = useLabels();
   const { isAuthenticated, isLoading: isAuthLoading, user, signIn, signInWithEmail, signOut, authProvider } = useAuth();
   const [emailInput, setEmailInput] = useState('');
   const [step, setStep] = useState<Step>('loading');
@@ -463,7 +465,7 @@ export function ProjectSelector({ onSelectionComplete }: ProjectSelectorProps) {
 
             {projects && projects.length > 0 && (
               <Flex direction="column" gap="2">
-                <Label>Select a project</Label>
+                <Label>Select a {label('project').toLowerCase()}</Label>
                 <Select.Root size="3" onValueChange={handleProjectSelect}>
                   <StyledSelectTrigger placeholder="Choose a project..." />
                   <StyledSelectContent>
@@ -516,13 +518,13 @@ export function ProjectSelector({ onSelectionComplete }: ProjectSelectorProps) {
             {playlists && playlists.length > 0 && (
               <>
                 <Flex direction="column" gap="2">
-                  <Label>Select a playlist</Label>
+                  <Label>Select a {label('playlist').toLowerCase()}</Label>
                   <Select.Root
                     size="3"
                     value={selectedPlaylistId}
                     onValueChange={handlePlaylistSelect}
                   >
-                    <StyledSelectTrigger placeholder="Choose a playlist..." />
+                    <StyledSelectTrigger placeholder={`Choose a ${label('playlist').toLowerCase()}...`} />
                     <StyledSelectContent>
                       {playlists.map((playlist) => (
                         <Select.Item

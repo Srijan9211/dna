@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
+from dna.models.ids import EntityId
 
 
 class Platform(str, Enum):
@@ -35,7 +36,7 @@ class DispatchBotRequest(BaseModel):
 
     platform: Platform
     meeting_id: str = Field(..., description="Native meeting ID for the platform")
-    playlist_id: int = Field(
+    playlist_id: EntityId = Field(
         ..., description="Playlist ID to associate with this meeting"
     )
     passcode: Optional[str] = Field(
@@ -60,7 +61,7 @@ class BotSession(BaseModel):
 
     platform: Platform
     meeting_id: str
-    playlist_id: int
+    playlist_id: EntityId
     status: BotStatusEnum
     vexa_meeting_id: Optional[int] = None
     bot_name: Optional[str] = None

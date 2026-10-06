@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DraftNote, NoteQCResult } from '@dna/core';
 import { apiHandler } from '../api';
+import type { EntityId } from '@dna/core';
 
 function draftKey(d: DraftNote): string {
   return d._id;
@@ -15,7 +16,7 @@ function draftsIdentityFingerprint(drafts: DraftNote[]): string {
   return [...drafts]
     .map(
       (d) =>
-        `${String(d._id)}\0${String(d.user_email).toLowerCase()}\0${Number(d.version_id)}`
+        `${String(d._id)}\0${String(d.user_email).toLowerCase()}\0${String(d.version_id)}`
     )
     .sort((a, b) => a.localeCompare(b))
     .join('|');
@@ -23,7 +24,7 @@ function draftsIdentityFingerprint(drafts: DraftNote[]): string {
 
 export interface UseNoteQCChecksOptions {
   open: boolean;
-  playlistId: number;
+  playlistId: EntityId;
   drafts: DraftNote[];
 }
 

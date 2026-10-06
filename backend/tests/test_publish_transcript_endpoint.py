@@ -81,6 +81,9 @@ class TestPublishTranscriptEndpoint:
         # version.project.id.
         version.project = {"type": "Project", "id": 1}
         p.get_entity.return_value = version
+        # The provider, not the endpoint, knows which tracker entity holds
+        # transcripts (a ShotGrid custom-entity slot, an AYON activity, ...).
+        p.transcript_entity_type.return_value = "CustomEntity01"
         return p
 
     @pytest.fixture

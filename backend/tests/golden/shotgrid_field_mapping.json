@@ -1,0 +1,105 @@
+{
+  "project": {
+    "entity_id": "Project",
+    "fields": {
+      "id": "id",
+      "name": "name"
+    },
+    "linked_fields": {}
+  },
+  "shot": {
+    "entity_id": "Shot",
+    "fields": {
+      "id": "id",
+      "code": "name",
+      "description": "description",
+      "project": "project"
+    },
+    "linked_fields": {
+      "tasks": "tasks"
+    }
+  },
+  "asset": {
+    "entity_id": "Asset",
+    "fields": {
+      "id": "id",
+      "code": "name",
+      "description": "description",
+      "project": "project"
+    },
+    "linked_fields": {
+      "tasks": "tasks"
+    }
+  },
+  "note": {
+    "entity_id": "Note",
+    "fields": {
+      "id": "id",
+      "subject": "subject",
+      "content": "content",
+      "project": "project"
+    },
+    "linked_fields": {
+      "note_links": "note_links",
+      "created_by": "author"
+    }
+  },
+  "task": {
+    "entity_id": "Task",
+    "fields": {
+      "id": "id",
+      "sg_status_list": "status",
+      "step": "pipeline_step",
+      "content": "name",
+      "project": "project"
+    },
+    "linked_fields": {
+      "entity": "entity"
+    }
+  },
+  "version": {
+    "entity_id": "Version",
+    "fields": {
+      "id": "id",
+      "code": "name",
+      "description": "description",
+      "sg_status_list": "status",
+      "user": "user",
+      "created_at": "created_at",
+      "updated_at": "updated_at",
+      "sg_path_to_movie": "movie_path",
+      "sg_path_to_frames": "frame_path",
+      "project": "project",
+      "image": "thumbnail"
+    },
+    "linked_fields": {
+      "entity": "entity",
+      "sg_task": "task",
+      "notes": "notes"
+    }
+  },
+  "playlist": {
+    "entity_id": "Playlist",
+    "fields": {
+      "id": "id",
+      "code": "code",
+      "description": "description",
+      "project": "project",
+      "created_at": "created_at",
+      "updated_at": "updated_at"
+    },
+    "linked_fields": {
+      "versions": "versions"
+    }
+  },
+  "user": {
+    "entity_id": "HumanUser",
+    "fields": {
+      "id": "id",
+      "name": "name",
+      "email": "email",
+      "login": "login"
+    },
+    "linked_fields": {}
+  }
+}

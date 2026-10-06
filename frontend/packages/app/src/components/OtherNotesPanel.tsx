@@ -3,12 +3,12 @@ import styled from 'styled-components';
 import { Avatar, AlertDialog, Button, Flex, Tooltip } from '@radix-ui/themes';
 import { Copy, ArrowDownToLine, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { DraftNote } from '@dna/core';
+import { DraftNote, type EntityId } from '@dna/core';
 import { useOtherDraftNotes } from '../hooks';
 
 interface OtherNotesPanelProps {
-  playlistId?: number | null;
-  versionId?: number | null;
+  playlistId?: EntityId | null;
+  versionId?: EntityId | null;
   userEmail?: string | null;
   onInsertNote?: (content: string) => void;
 }

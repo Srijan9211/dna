@@ -3,10 +3,11 @@ import styled, { css } from 'styled-components';
 import { Loader2, MessageSquare, AlertCircle } from 'lucide-react';
 import { useSegments } from '../hooks';
 import { useConnectionStatus } from '../hooks/useDNAEvents';
+import type { EntityId } from '@dna/core';
 
 interface TranscriptPanelProps {
-  playlistId: number | null;
-  versionId: number | null;
+  playlistId: EntityId | null;
+  versionId: EntityId | null;
 }
 
 const PanelContainer = styled.div`

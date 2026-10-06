@@ -36,12 +36,13 @@ Environment variables
 from __future__ import annotations
 
 import logging
-import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
+
+from dna.configsys import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,22 @@ class ShotGridCredentials:
     # missing username with 401 rather than degrading to script-account access.
     user_id: int
     username: str = ""  # ShotGrid login name — never overwritten after login
+
+
+@dataclass
+class AyonCredentials:
+    """The AYON identity behind an AYON login session.
+
+    Like :class:`ShotGridCredentials` it holds no credential: the password is
+    verified once at login and discarded, and DNA reaches AYON with its own
+    service key plus ``x-as-user``.  A leaked session document grants no AYON
+    access.
+
+    username : the AYON user name, passed as ``x-as-user`` on every prodtrack
+               request.  Also the user's id in AYON.
+    """
+
+    username: str = ""
 
 
 # ── Core session model ────────────────────────────────────────────────────────
@@ -124,7 +141,8 @@ class UserSession:
 
     # ── Provider credentials — add new providers here ─────────────────── #
     shotgrid: Optional[ShotGridCredentials] = None
-    # future: ftrack: Optional[FtrackCredentials] = None
+    ayon: Optional[AyonCredentials] = None
+    # future: ftrack, kitsu ...
 
     # ── DNA refresh token — hashes only, never the raw secret ─────────── #
     dna_refresh_token_hash: str = ""
@@ -186,6 +204,27 @@ class UserSession:
     @property
     def sg_user_id(self) -> int:
         return self.shotgrid.user_id if self.shotgrid else 0
+
+    # Tracker-neutral accessors: whichever tracker authenticated the user.
+
+    @property
+    def tracker_login(self) -> Optional[str]:
+        """The user's login in the tracker that signed them in; the prodtrack
+        provider acts as this user."""
+        if self.shotgrid:
+            return self.shotgrid.username or None
+        if self.ayon:
+            return self.ayon.username or None
+        return None
+
+    @property
+    def tracker_user_id(self) -> Any:
+        """The user's id in that tracker (an int for ShotGrid, the name for AYON)."""
+        if self.shotgrid:
+            return self.shotgrid.user_id
+        if self.ayon:
+            return self.ayon.username
+        return 0
 
 
 # ── Abstract interface ────────────────────────────────────────────────────────
@@ -291,11 +330,10 @@ class MongoSessionStore(AbstractSessionStore):
                 "Install with: pip install pymongo"
             )
 
-        self._mongo_url = mongo_url or os.getenv(
-            "MONGODB_URL", "mongodb://localhost:27017"
-        )
-        self._db_name = db_name or os.getenv("MONGODB_DB", "dna")
-        self.session_ttl = session_ttl or int(os.getenv("SESSION_TTL_SECONDS", "28800"))
+        cfg = get_config()
+        self._mongo_url = mongo_url or cfg.get("storage").mongodb_url
+        self._db_name = db_name or cfg.get("storage").mongodb_db
+        self.session_ttl = session_ttl or cfg.get("auth").session.ttl_seconds
 
         self._client = MongoClient(
             self._mongo_url,

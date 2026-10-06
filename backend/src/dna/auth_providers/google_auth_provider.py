@@ -3,7 +3,6 @@
 Validates Google tokens (ID tokens or access tokens) using Google APIs.
 """
 
-import os
 import time
 from typing import Optional
 
@@ -11,6 +10,7 @@ import requests as http_requests
 from google.auth.transport import requests
 from google.oauth2 import id_token
 
+from dna.configsys import get_config
 from dna.auth_providers.auth_provider_base import AuthProviderBase
 
 
@@ -27,7 +27,7 @@ class GoogleAuthProvider(AuthProviderBase):
             client_id: The Google OAuth client ID for token validation.
                       If not provided, reads from GOOGLE_CLIENT_ID env var.
         """
-        self.client_id = client_id or os.getenv("GOOGLE_CLIENT_ID")
+        self.client_id = client_id or get_config().get("auth").google_client_id
         if not self.client_id:
             raise ValueError("Google client ID is required for token validation")
         self._request = requests.Request()

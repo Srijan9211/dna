@@ -8,12 +8,25 @@ import {
 } from 'react';
 import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
 import { apiHandler } from '../api';
-import { ShotGridAuthProvider, useShotGridAuth } from './ShotGridAuthContext';
+import {
+  ShotGridAuthProvider,
+  useShotGridAuth,
+  type SessionAuthProviderType,
+} from './ShotGridAuthContext';
+import { useRuntimeConfig } from './RuntimeConfigContext';
+import type { AuthProviderType } from '../config/runtimeConfig';
 
 const STORAGE_KEY = 'dna-auth-token';
 const USER_STORAGE_KEY = 'dna-auth-user';
 
-export type AuthProviderType = 'none' | 'google' | 'shotgrid';
+export type { AuthProviderType };
+
+/** True for the trackers that sign in with a username + password session. */
+export function isSessionAuth(
+  provider: AuthProviderType
+): provider is SessionAuthProviderType {
+  return provider === 'shotgrid' || provider === 'ayon';
+}
 
 export interface AuthUser {
   id: string;
@@ -34,14 +47,6 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-function getAuthProvider(): AuthProviderType {
-  const provider = import.meta.env.VITE_AUTH_PROVIDER || 'google';
-  if (provider === 'none' || provider === 'google' || provider === 'shotgrid') {
-    return provider;
-  }
-  return 'google';
-}
 
 interface NoopAuthProviderInnerProps {
   children: ReactNode;
@@ -226,8 +231,8 @@ function GoogleAuthProviderInner({ children }: GoogleAuthProviderInnerProps) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// Bridges ShotGridAuthContext into the shared AuthContext shape so components
-// using useAuth() work unchanged. Sign-in happens on ShotGridLoginPage (App.tsx
+// Bridges the tracker session context (ShotGrid or AYON) into the shared AuthContext shape so components
+// using useAuth() work unchanged. Sign-in happens on TrackerLoginPage (App.tsx
 // renders it for this provider), so the generic sign-in entry points are unused.
 function ShotGridAuthAdapterInner({ children }: { children: ReactNode }) {
   const sg = useShotGridAuth();
@@ -239,10 +244,10 @@ function ShotGridAuthAdapterInner({ children }: { children: ReactNode }) {
       ? { id: String(sg.user.id), email: sg.user.email, name: sg.user.name }
       : null,
     token: sg.token,
-    authProvider: 'shotgrid',
-    signIn: () => console.warn('Use ShotGridLoginPage for ShotGrid auth'),
+    authProvider: sg.authProvider,
+    signIn: () => console.warn('Use TrackerLoginPage for tracker auth'),
     signInWithEmail: () =>
-      console.warn('Use ShotGridLoginPage for ShotGrid auth'),
+      console.warn('Use TrackerLoginPage for tracker auth'),
     signOut: sg.signOut,
   };
 
@@ -255,11 +260,14 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children, clientId }: AuthProviderProps) {
-  const authProviderType = getAuthProvider();
+  // The login mode comes from the server (/config/public) at boot, falling back
+  // to the build-time VITE_AUTH_PROVIDER, so the same build serves every tracker.
+  const config = useRuntimeConfig();
+  const authProviderType = config.authProvider;
 
-  if (authProviderType === 'shotgrid') {
+  if (isSessionAuth(authProviderType)) {
     return (
-      <ShotGridAuthProvider>
+      <ShotGridAuthProvider provider={authProviderType}>
         <ShotGridAuthAdapterInner>{children}</ShotGridAuthAdapterInner>
       </ShotGridAuthProvider>
     );
@@ -269,12 +277,12 @@ export function AuthProvider({ children, clientId }: AuthProviderProps) {
     return <NoopAuthProviderInner>{children}</NoopAuthProviderInner>;
   }
 
-  const googleClientId =
-    clientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const googleClientId = clientId || config.googleClientId;
 
   if (!googleClientId) {
     console.warn(
-      'VITE_GOOGLE_CLIENT_ID is not set. Falling back to noop auth.'
+      'No Google client id is configured (server auth.google_client_id or ' +
+        'VITE_GOOGLE_CLIENT_ID). Falling back to noop auth.'
     );
     return <NoopAuthProviderInner>{children}</NoopAuthProviderInner>;
   }

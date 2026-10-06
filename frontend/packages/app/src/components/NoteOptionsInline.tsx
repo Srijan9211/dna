@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import styled from 'styled-components';
 import { Pencil, X } from 'lucide-react';
-import { SearchResult } from '@dna/core';
+import { SearchResult, type EntityId } from '@dna/core';
 import { EntitySearchInput } from './EntitySearchInput';
 import { EntityPill, type EntityType } from './EntityPill/EntityPill';
 
@@ -15,7 +15,7 @@ interface NoteOptionsInlineProps {
   /** Selected entities for Links field */
   linksValue?: SearchResult[];
   /** Project ID for scoping entity search */
-  projectId?: number;
+  projectId?: EntityId;
   /** Current version to auto-add to links (non-removable) */
   currentVersion?: SearchResult;
   /** Version submitter shown as locked (non-removable) To recipient */

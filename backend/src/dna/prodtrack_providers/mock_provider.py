@@ -1,6 +1,5 @@
 """Read-only mock production tracking provider backed by SQLite."""
 
-import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +7,7 @@ from typing import Any, Optional
 
 THUMBNAIL_LOCAL = "__local__"
 
+from dna.configsys import get_config
 from dna.models.entity import (
     ENTITY_MODELS,
     Asset,
@@ -58,11 +58,14 @@ class MockProdtrackProvider(ProdtrackProviderBase):
         base_url: Optional[str] = None,
     ):
         super().__init__()
+        from dna.prodtrack_providers.profile import load_profile
+
+        self.profile = load_profile("mock")
         if db_path is None:
             db_path = Path(__file__).parent / "mock_data" / "mock.db"
         self._db_path = Path(db_path)
         self._base_url = (
-            base_url or os.getenv("API_BASE_URL", "http://localhost:8000")
+            base_url or get_config().get("prodtrack").mock.api_base_url
         ).rstrip("/")
         self._conn: Optional[sqlite3.Connection] = None
 

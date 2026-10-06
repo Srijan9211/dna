@@ -1,10 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DraftNote } from '@dna/core';
+import { DraftNote, type EntityId } from '@dna/core';
 import { apiHandler } from '../api';
 
 export interface UseOtherDraftNotesParams {
-  playlistId: number | null | undefined;
-  versionId: number | null | undefined;
+  playlistId: EntityId | null | undefined;
+  versionId: EntityId | null | undefined;
   currentUserEmail: string | null | undefined;
 }
 

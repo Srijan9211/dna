@@ -105,11 +105,6 @@ class TranscriptionProviderBase:
 
 def get_transcription_provider() -> TranscriptionProviderBase:
     """Factory function to get the configured transcription provider."""
-    provider_type = os.getenv("TRANSCRIPTION_PROVIDER", "vexa")
+    from dna.configsys import get_config, providers
 
-    if provider_type == "vexa":
-        from dna.transcription_providers.vexa import VexaTranscriptionProvider
-
-        return VexaTranscriptionProvider()
-
-    raise ValueError(f"Unknown transcription provider: {provider_type}")
+    return providers.transcription.create(get_config().get("transcription").provider)

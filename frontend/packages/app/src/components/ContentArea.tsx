@@ -8,16 +8,17 @@ import { AssistantPanel } from './AssistantPanel';
 import { usePlaylistMetadata, useSetInReview, useDraftNote } from '../hooks';
 import { useHotkeyAction } from '../hotkeys';
 import { apiHandler } from '../api';
-import { useFeatureFlags } from '../contexts';
+import { useFeatureFlags, useRuntimeConfig } from '../contexts';
 import {
   openProdtrackVersionViaExtensionOrNewTab,
   openProdtrackVersionInExtension,
 } from '../prodtrackTabSync/sendProdtrackTabSync';
+import type { EntityId } from '@dna/core';
 
 interface ContentAreaProps {
   version?: Version | null;
   versions?: Version[];
-  playlistId?: number | null;
+  playlistId?: EntityId | null;
   userEmail?: string | null;
   onVersionSelect?: (version: Version) => void;
   onRefresh?: () => void;
@@ -163,8 +164,7 @@ export function ContentArea({
     enabled: !!version && !!playlistId,
   });
 
-  const extensionId =
-    import.meta.env.VITE_PRODTRACK_TAB_SYNC_EXTENSION_ID?.trim() ?? '';
+  const { tabSyncExtensionId: extensionId } = useRuntimeConfig();
 
   const [prodtrackControlledTabId, setProdtrackControlledTabId] = useState<
     number | null
@@ -205,7 +205,7 @@ export function ContentArea({
 
   // Tracks the version id we last reacted to, so we only sync on an actual
   // version change (not on settings/url/mount re-renders for the same version).
-  const lastProdtrackVersionIdRef = useRef<number | null>(null);
+  const lastProdtrackVersionIdRef = useRef<EntityId | null>(null);
 
   useEffect(() => {
     const currentVersionId = version?.id ?? null;

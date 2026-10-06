@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the Dailies Notes Assistant Project.
+#
+# Mock connector profile.  The mock provider serves DNA's own entity shapes from a
+# local SQLite file, so its bindings are identity mappings; the profile exists so
+# DNA can ask any connector what it supports through one mechanism.
+
+connector: mock
+display_name: Mock (local sample data)
+
+labels:
+  project: Project
+  shot: Shot
+  asset: Asset
+  task: Task
+  version: Version
+  playlist: Playlist
+  user: User
+  note: Note
+
+capabilities:
+  playlists: true
+  create_playlist: true
+  add_to_playlist: true
+  notes: true
+  note_attachments: false
+  note_addressing: true
+  note_mentions: false
+  version_status_write: true
+  author_attribution: false
+  transcript_storage: [dna_only]
+  impersonation: none
+
+roles:
+  project: [project]
+  subject: [shot, asset]
+  task: [task]
+  reviewable: [version]
+  collection: [playlist]
+  person: [user]
+  note: [note]
+
+entities:
+  project: {source: Project}
+  shot: {source: Shot}
+  asset: {source: Asset}
+  note: {source: Note}
+  task: {source: Task}
+  version: {source: Version}
+  playlist: {source: Playlist}
+  user: {source: User}

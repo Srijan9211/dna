@@ -3,16 +3,16 @@ import styled from 'styled-components';
 import { Loader2, X } from 'lucide-react';
 import { Popover } from '@radix-ui/themes';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Version, normalizeEntitySearchQuery } from '@dna/core';
+import { Version, normalizeEntitySearchQuery, type EntityId } from '@dna/core';
 import { apiHandler } from '../api';
 import { useEntitySearch } from '../hooks/useEntitySearch';
 
 export interface AddVersionInputProps {
-  playlistId: number;
+  playlistId: EntityId;
   /** Project ID for scoping the version search */
-  projectId?: number;
+  projectId?: EntityId;
   /** Versions already in the playlist (hidden from results) */
-  existingVersionIds?: number[];
+  existingVersionIds?: EntityId[];
   onClose: () => void;
   onVersionAdded?: (version: Version) => void;
 }
@@ -178,7 +178,7 @@ export function AddVersionInput({
     error,
     reset: resetAdd,
   } = useMutation({
-    mutationFn: (versionId: number) =>
+    mutationFn: (versionId: EntityId) =>
       apiHandler.addVersionToPlaylist({ playlistId, versionId }),
     onSuccess: (version) => {
       queryClient.invalidateQueries({ queryKey: ['versions', playlistId] });
@@ -200,7 +200,7 @@ export function AddVersionInput({
   const showDropdown =
     (isOpen && trimmedQuery.length > 0) || isPending || isError;
 
-  function handleSelect(versionId: number) {
+  function handleSelect(versionId: EntityId) {
     if (isPending) return;
     addVersion(versionId);
   }

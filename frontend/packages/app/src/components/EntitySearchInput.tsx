@@ -8,6 +8,7 @@ import {
   filterMentionCandidates,
   filterSearchResultsByEntityTypes,
   normalizeEntitySearchQuery,
+  type EntityId,
 } from '@dna/core';
 import { useEntitySearch } from '../hooks/useEntitySearch';
 import { useMentionIndex } from '../contexts/MentionIndexContext';
@@ -15,7 +16,7 @@ import { EntityPill, type EntityType } from './EntityPill/EntityPill';
 
 export interface EntitySearchInputProps {
   entityTypes: SearchableEntityType[];
-  projectId?: number;
+  projectId?: EntityId;
   value: SearchResult[];
   onChange: (entities: SearchResult[]) => void;
   placeholder?: string;

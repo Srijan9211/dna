@@ -9,7 +9,7 @@ import {
 } from 'react';
 import styled from 'styled-components';
 import { X, Image, ImageOff } from 'lucide-react';
-import { SearchResult, Version } from '@dna/core';
+import { SearchResult, Version, type EntityId } from '@dna/core';
 import { NoteOptionsInline } from './NoteOptionsInline';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MentionIndexProvider } from '../contexts/MentionIndexContext';
@@ -25,7 +25,7 @@ export interface StagedAttachment {
 }
 
 interface NoteEditorProps {
-  projectId?: number | null;
+  projectId?: EntityId | null;
   currentVersion?: Version | null;
   draftNote: LocalDraftNote | null;
   updateDraftNote: (updates: Partial<LocalDraftNote>) => void;
@@ -362,7 +362,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
 
     const attachmentsRef = useRef<StagedAttachment[]>([]);
     const attachmentsByVersion = useRef<
-      Map<number | null | undefined, StagedAttachment[]>
+      Map<EntityId | null | undefined, StagedAttachment[]>
     >(new Map());
     const versionIdRef = useRef(currentVersion?.id);
 

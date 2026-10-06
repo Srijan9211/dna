@@ -13,6 +13,8 @@ import { UserAvatar } from './UserAvatar';
 import { useHotkeyConfig } from '../hotkeys';
 import { useVersionStatuses } from '../hooks';
 import { useFeatureFlags } from '../contexts';
+import type { EntityId } from '@dna/core';
+import { useLabels } from '../hooks/useLabels';
 
 interface VersionHeaderProps {
   shotCode?: string;
@@ -21,7 +23,7 @@ interface VersionHeaderProps {
   submittedByImageUrl?: string;
   dateSubmitted?: string;
   versionStatus?: string;
-  projectId?: number;
+  projectId?: EntityId;
   thumbnailUrl?: string;
   links?: string[];
   onBack?: () => void;
@@ -400,6 +402,7 @@ export function VersionHeader({
   isCurrentVersionInReview = false,
   isSettingInReview = false,
 }: VersionHeaderProps) {
+  const label = useLabels();
   const { getLabel } = useHotkeyConfig();
   const { inReviewEnabled } = useFeatureFlags();
   const { statuses, isLoading: isLoadingStatuses } = useVersionStatuses({ projectId });
@@ -507,7 +510,7 @@ export function VersionHeader({
             <MetadataValue>{dateSubmitted}</MetadataValue>
           </MetadataRow>
           <MetadataRow>
-            <MetadataLabel>Version Status:</MetadataLabel>
+            <MetadataLabel>{label('version')} Status:</MetadataLabel>
             <MetadataValue>
               <StatusSelectWrapper>
                 <StatusSelect

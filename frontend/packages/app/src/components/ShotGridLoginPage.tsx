@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import styled from 'styled-components';
 import { Button, Flex, Spinner, TextField } from '@radix-ui/themes';
 import { Logo } from './Logo';
-import { useShotGridAuth } from '../contexts/ShotGridAuthContext';
+import {
+  useShotGridAuth,
+  type SessionAuthProviderType,
+} from '../contexts/ShotGridAuthContext';
+import { useRuntimeConfig } from '../contexts/RuntimeConfigContext';
 
 // ── Styled components ──────────────────────────────────────────────────── //
 
@@ -79,10 +83,61 @@ const HelpText = styled.p`
   line-height: 1.5;
 `;
 
+// ── Per-tracker wording ────────────────────────────────────────────────── //
+
+interface LoginCopy {
+  subtitle: string;
+  usernameLabel: string;
+  usernamePlaceholder: string;
+  passwordPlaceholder: string;
+  help: ReactNode;
+}
+
+export function loginCopy(
+  provider: SessionAuthProviderType,
+  trackerName: string
+): LoginCopy {
+  if (provider === 'ayon') {
+    return {
+      subtitle: `Sign in with your ${trackerName} credentials`,
+      usernameLabel: 'User name or email',
+      usernamePlaceholder: 'you@studio.com',
+      passwordPlaceholder: `${trackerName} password`,
+      help: (
+        <>
+          Use your {trackerName} user name (or email) and password. DNA checks
+          them with {trackerName} once and never stores your password.
+        </>
+      ),
+    };
+  }
+  return {
+    subtitle: `Sign in with your ${trackerName} credentials`,
+    usernameLabel: 'Email / Username',
+    usernamePlaceholder: 'you@studio.com',
+    passwordPlaceholder: `${trackerName} Legacy Password`,
+    help: (
+      <>
+        <strong>Cloud ShotGrid:</strong> Use your ShotGrid Legacy Login
+        password. If you haven't set one, go to{' '}
+        <em>Account Settings → Legacy Login and Personal Access Token</em> in
+        ShotGrid and bind your Personal Access Token (generated at
+        profile.autodesk.com).
+        <br />
+        <strong>On-prem ShotGrid:</strong> Use your regular ShotGrid or LDAP
+        password.
+      </>
+    ),
+  };
+}
+
 // ── Component ──────────────────────────────────────────────────────────── //
 
-export function ShotGridLoginPage() {
-  const { signIn, isLoading } = useShotGridAuth();
+/** Username + password sign-in for whichever tracker the server is set up for. */
+export function TrackerLoginPage() {
+  const { signIn, isLoading, authProvider } = useShotGridAuth();
+  const config = useRuntimeConfig();
+  const copy = loginCopy(authProvider, config.tracker.displayName);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -108,16 +163,16 @@ export function ShotGridLoginPage() {
         </LogoWrapper>
 
         <Title>Welcome to DNA</Title>
-        <Subtitle>Sign in with your ShotGrid credentials</Subtitle>
+        <Subtitle>{copy.subtitle}</Subtitle>
 
         <form onSubmit={handleSubmit}>
           <Flex direction="column" gap="3">
             <div>
-              <FieldLabel htmlFor="username">Email / Username</FieldLabel>
+              <FieldLabel htmlFor="username">{copy.usernameLabel}</FieldLabel>
               <TextField.Root
                 id="username"
                 type="text"
-                placeholder="you@studio.com"
+                placeholder={copy.usernamePlaceholder}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={isLoading}
@@ -131,7 +186,7 @@ export function ShotGridLoginPage() {
               <TextField.Root
                 id="password"
                 type="password"
-                placeholder="ShotGrid Legacy Password"
+                placeholder={copy.passwordPlaceholder}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isLoading}
@@ -152,17 +207,11 @@ export function ShotGridLoginPage() {
           </Flex>
         </form>
 
-        <HelpText>
-          <strong>Cloud ShotGrid:</strong> Use your ShotGrid Legacy Login
-          password. If you haven't set one, go to{' '}
-          <em>Account Settings → Legacy Login and Personal Access Token</em> in
-          ShotGrid and bind your Personal Access Token (generated at
-          profile.autodesk.com).
-          <br />
-          <strong>On-prem ShotGrid:</strong> Use your regular ShotGrid or LDAP
-          password.
-        </HelpText>
+        <HelpText>{copy.help}</HelpText>
       </Card>
     </PageWrapper>
   );
 }
+
+/** The original name, kept so existing imports keep working. */
+export const ShotGridLoginPage = TrackerLoginPage;

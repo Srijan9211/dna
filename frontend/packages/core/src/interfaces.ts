@@ -1,3 +1,10 @@
+/**
+ * A tracker's id for an entity.  Opaque: ShotGrid ids are numbers; AYON ids are
+ * strings (``"<project>:<uuid>"``).  Compare ids for equality and pass them back to
+ * the API unchanged; never do arithmetic on them, order them, or ``Number()`` them.
+ */
+export type EntityId = number | string;
+
 export type EntityType =
   | 'Project'
   | 'Shot'
@@ -9,24 +16,24 @@ export type EntityType =
 
 export interface ProjectReference {
   type: string;
-  id: number;
+  id: EntityId;
   name?: string;
 }
 
 export interface PipelineStep {
   type: string;
-  id: number;
+  id: EntityId;
   name?: string;
 }
 
 export interface UserReference {
-  id: number;
+  id: EntityId;
   name: string;
   type: string;
 }
 
 export interface EntityBase {
-  id: number;
+  id: EntityId;
   type: EntityType;
 }
 
@@ -98,7 +105,7 @@ export interface Playlist extends EntityBase {
 }
 
 export interface User {
-  id: number;
+  id: EntityId;
   type: 'User';
   name?: string;
   email?: string;
@@ -117,7 +124,7 @@ export type DNAEntity =
 
 export interface EntityLink {
   type: string;
-  id: number;
+  id: EntityId;
 }
 
 export interface CreateNoteRequest {
@@ -132,11 +139,11 @@ export interface GetProjectsForUserParams {
 }
 
 export interface GetPlaylistsForProjectParams {
-  projectId: number;
+  projectId: EntityId;
 }
 
 export interface GetVersionsForPlaylistParams {
-  playlistId: number;
+  playlistId: EntityId;
 }
 
 export interface GetUserByEmailParams {
@@ -145,15 +152,15 @@ export interface GetUserByEmailParams {
 
 export interface DraftNoteLink {
   entity_type: string;
-  entity_id: number;
+  entity_id: EntityId;
   entity_name?: string;
 }
 
 export interface DraftNote {
   _id: string;
   user_email: string;
-  playlist_id: number;
-  version_id: number;
+  playlist_id: EntityId;
+  version_id: EntityId;
   content: string;
   subject: string;
   to: string;
@@ -162,7 +169,7 @@ export interface DraftNote {
   version_status: string;
   published: boolean;
   edited: boolean;
-  published_note_id?: number | null;
+  published_note_id?: EntityId | null;
   updated_at: string;
   created_at: string;
   attachment_ids: string[];
@@ -180,56 +187,56 @@ export interface DraftNoteUpdate {
 }
 
 export interface GetDraftNoteParams {
-  playlistId: number;
-  versionId: number;
+  playlistId: EntityId;
+  versionId: EntityId;
   userEmail: string;
 }
 
 export interface UpsertDraftNoteParams {
-  playlistId: number;
-  versionId: number;
+  playlistId: EntityId;
+  versionId: EntityId;
   userEmail: string;
   data: DraftNoteUpdate;
 }
 
 export interface DeleteDraftNoteParams {
-  playlistId: number;
-  versionId: number;
+  playlistId: EntityId;
+  versionId: EntityId;
   userEmail: string;
 }
 
 export interface GetAllDraftNotesParams {
-  playlistId: number;
-  versionId: number;
+  playlistId: EntityId;
+  versionId: EntityId;
 }
 
 export interface PlaylistMetadata {
   _id: string;
-  playlist_id: number;
-  in_review: number | null;
+  playlist_id: EntityId;
+  in_review: EntityId | null;
   meeting_id: string | null;
   platform: Platform | null;
   transcription_paused: boolean;
 }
 
 export interface PlaylistMetadataUpdate {
-  in_review?: number | null;
+  in_review?: EntityId | null;
   meeting_id?: string | null;
   platform?: Platform | null;
   transcription_paused?: boolean;
 }
 
 export interface GetPlaylistMetadataParams {
-  playlistId: number;
+  playlistId: EntityId;
 }
 
 export interface UpsertPlaylistMetadataParams {
-  playlistId: number;
+  playlistId: EntityId;
   data: PlaylistMetadataUpdate;
 }
 
 export interface DeletePlaylistMetadataParams {
-  playlistId: number;
+  playlistId: EntityId;
 }
 
 export type Platform = 'google_meet' | 'teams';
@@ -247,7 +254,7 @@ export type BotStatusEnum =
 export interface DispatchBotRequest {
   platform: Platform;
   meeting_id: string;
-  playlist_id: number;
+  playlist_id: EntityId;
   passcode?: string;
   bot_name?: string;
   language?: string;
@@ -264,7 +271,7 @@ export interface BotStatus {
 export interface BotSession {
   platform: Platform;
   meeting_id: string;
-  playlist_id: number;
+  playlist_id: EntityId;
   status: BotStatusEnum;
   bot_name?: string;
   language?: string;
@@ -310,8 +317,8 @@ export interface GetTranscriptParams {
 export interface StoredSegment {
   id: string;
   segment_id: string;
-  playlist_id: number;
-  version_id: number;
+  playlist_id: EntityId;
+  version_id: EntityId;
   text: string;
   speaker?: string;
   language?: string;
@@ -326,8 +333,8 @@ export interface StoredSegment {
 }
 
 export interface GetSegmentsParams {
-  playlistId: number;
-  versionId: number;
+  playlistId: EntityId;
+  versionId: EntityId;
 }
 
 export interface UserSettings {
@@ -358,18 +365,18 @@ export interface UserSettingsUpdate {
 /** Production-specific glossary, keyed by ShotGrid project id. */
 export interface ProjectGlossary {
   _id: string;
-  project_id: number;
+  project_id: EntityId;
   content: string;
   updated_at: string;
   created_at: string;
 }
 
 export interface GetProjectGlossaryParams {
-  projectId: number;
+  projectId: EntityId;
 }
 
 export interface UpsertProjectGlossaryParams {
-  projectId: number;
+  projectId: EntityId;
   content: string;
 }
 
@@ -387,8 +394,8 @@ export interface DeleteUserSettingsParams {
 }
 
 export interface GenerateNoteParams {
-  playlistId: number;
-  versionId: number;
+  playlistId: EntityId;
+  versionId: EntityId;
   userEmail: string;
   additionalInstructions?: string;
   model?: string;
@@ -415,8 +422,8 @@ export interface AISuggestionState {
 }
 
 export type AISuggestionStateChangeCallback = (
-  playlistId: number,
-  versionId: number,
+  playlistId: EntityId,
+  versionId: EntityId,
   state: AISuggestionState
 ) => void;
 
@@ -432,19 +439,19 @@ export type SearchableEntityType =
 export interface SearchRequest {
   query: string;
   entity_types: SearchableEntityType[];
-  project_id?: number;
+  project_id?: EntityId;
   limit?: number;
 }
 
 export interface SearchResult {
   type: string;
-  id: number;
+  id: EntityId;
   name: string;
   description?: string;
   email?: string;
   project?: {
     type: string;
-    id: number;
+    id: EntityId;
   };
 }
 
@@ -455,18 +462,18 @@ export interface SearchResponse {
 export interface SearchEntitiesParams {
   query: string;
   entityTypes: SearchableEntityType[];
-  projectId?: number;
+  projectId?: EntityId;
   limit?: number;
 }
 
 export interface AddVersionToPlaylistParams {
-  playlistId: number;
+  playlistId: EntityId;
   /** ID of an existing version to add */
-  versionId: number;
+  versionId: EntityId;
 }
 
 export interface CreatePlaylistParams {
-  projectId: number;
+  projectId: EntityId;
   name: string;
 }
 
@@ -477,12 +484,12 @@ export interface StatusOption {
 }
 
 export interface GetVersionStatusesParams {
-  projectId?: number;
+  projectId?: EntityId;
 }
 
 export interface PublishNoteTarget {
   user_email: string;
-  version_id: number;
+  version_id: EntityId;
 }
 
 export interface PublishNotesRequest {
@@ -493,7 +500,7 @@ export interface PublishNotesRequest {
    * version ids. Pass [] to suppress status side effects entirely (statuses
    * are then published separately via updateVersionStatus).
    */
-  status_version_ids?: number[];
+  status_version_ids?: EntityId[];
 }
 
 export interface PublishNotesResponse {
@@ -505,18 +512,18 @@ export interface PublishNotesResponse {
 }
 
 export interface PublishNotesParams {
-  playlistId: number;
+  playlistId: EntityId;
   request: PublishNotesRequest;
 }
 
 export interface UpdateVersionStatusParams {
-  versionId: number;
+  versionId: EntityId;
   status: string;
   /**
    * When set, pending version_status values on this playlist's draft notes
    * for the version are cleared server-side after the update.
    */
-  playlistId?: number;
+  playlistId?: EntityId;
 }
 
 export interface UpdateVersionStatusResponse {
@@ -524,18 +531,18 @@ export interface UpdateVersionStatusResponse {
 }
 
 export interface PublishTranscriptRequest {
-  version_id: number;
+  version_id: EntityId;
 }
 
 export interface PublishTranscriptResponse {
-  transcript_entity_id: number;
+  transcript_entity_id: EntityId;
   outcome: 'created' | 'updated' | 'skipped';
   skipped_reason?: string | null;
   segments_count: number;
 }
 
 export interface PublishTranscriptParams {
-  playlistId: number;
+  playlistId: EntityId;
   request: PublishTranscriptRequest;
 }
 
@@ -614,7 +621,94 @@ export interface DeleteQCCheckParams {
 }
 
 export interface RunQCChecksParams {
-  playlistId: number;
-  versionId: number;
+  playlistId: EntityId;
+  versionId: EntityId;
   userEmail: string;
+}
+
+// ── Configuration admin API (/config/*) ───────────────────────────────────── //
+
+export type CheckStatus = 'ok' | 'warn' | 'fail' | 'skip';
+
+export interface HandshakeCheck {
+  name: string;
+  status: CheckStatus;
+  message: string;
+  details: Record<string, unknown>;
+}
+
+/** A concrete fix for a mismatch, as a profile override the admin can accept. */
+export interface HandshakeSuggestion {
+  path: string;
+  problem: string;
+  options: string[];
+  override: Record<string, unknown> | null;
+}
+
+export interface HandshakeReport {
+  connector: string;
+  contract: string;
+  /** No check failed.  Warnings do not block saving. */
+  ok: boolean;
+  checks: HandshakeCheck[];
+  suggestions: HandshakeSuggestion[];
+  capabilities: Record<string, unknown>;
+  schema: Record<string, unknown>;
+  applied: boolean;
+  revision?: number;
+  restart_required?: string[];
+}
+
+export interface HandshakeRequest {
+  /** Overrides to try, e.g. `{ prodtrack: { ayon: {...}, profile: {...} } }`. */
+  candidate?: Record<string, unknown>;
+  /** Also walk this user's projects, playlists and versions (read-only). */
+  smoke_email?: string;
+  /** Save the candidate if the report has no failing check. */
+  apply?: boolean;
+  note?: string;
+}
+
+export interface ConfigAccess {
+  admin: boolean;
+}
+
+export interface EffectiveConfig {
+  version: number;
+  revision: number;
+  /** Resolved values; secrets are masked. */
+  config: Record<string, Record<string, unknown>>;
+  /** Where each value came from: `default`, `env:NAME`, `file:PATH`, `runtime`. */
+  provenance: Record<string, string>;
+  runtime_overrides: Record<string, unknown>;
+  /** Sections set only from files/environment, never through the admin API. */
+  locked_sections: string[];
+}
+
+export interface ConfigIssue {
+  section: string;
+  path: string;
+  message: string;
+  source: string;
+}
+
+export interface ConfigValidation {
+  valid: boolean;
+  issues: ConfigIssue[];
+  changed: string[];
+  restart_required: string[];
+}
+
+export interface ConfigChangeResult {
+  revision: number;
+  changed: string[];
+  restart_required: string[];
+}
+
+export interface ConfigRevision {
+  version: number;
+  actor: string;
+  at: number;
+  note: string;
+  changed: string[];
 }

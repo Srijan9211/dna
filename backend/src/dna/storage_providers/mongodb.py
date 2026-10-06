@@ -3,13 +3,13 @@
 MongoDB implementation of the storage provider interface using PyMongo's native async API.
 """
 
-import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from bson import ObjectId
 from pymongo import AsyncMongoClient, ReturnDocument
 
+from dna.configsys import get_config
 from dna.models.draft_note import DraftNote, DraftNoteUpdate
 from dna.models.playlist_metadata import PlaylistMetadata, PlaylistMetadataUpdate
 from dna.models.project_glossary import ProjectGlossary, ProjectGlossaryUpdate
@@ -68,7 +68,7 @@ class MongoDBStorageProvider(StorageProviderBase):
     @property
     def client(self) -> AsyncMongoClient[Any]:
         if self._client is None:
-            mongo_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+            mongo_url = get_config().get("storage").mongodb_url
             self._client = AsyncMongoClient(mongo_url)
         return self._client
 

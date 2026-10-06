@@ -1,0 +1,138 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the Dailies Notes Assistant Project.
+#
+# ShotGrid connector profile (contract dna.prodtrack/1).
+#
+# This is ShotGrid's vocabulary as data.  A studio that renamed a field or uses a
+# custom entity overrides just that part in config (prodtrack.profile).  Overrides
+# are merged over this file; set a key to null to remove it.  Renaming the status
+# field, for example:
+#
+#   prodtrack:
+#     profile:
+#       entities:
+#         version:
+#           fields: {sg_status_list: null, sg_review_status: status}
+#         task:
+#           fields: {sg_status_list: null, sg_task_status: status}
+#       adapter:
+#         status_field: sg_review_status
+
+connector: shotgrid
+display_name: ShotGrid
+
+# Words ShotGrid users know these things by (shown in the UI and used in prompts).
+labels:
+  project: Project
+  shot: Shot
+  asset: Asset
+  task: Task
+  version: Version
+  playlist: Playlist
+  user: User
+  note: Note
+
+capabilities:
+  playlists: true
+  create_playlist: true
+  add_to_playlist: true
+  notes: true
+  note_attachments: true
+  note_addressing: true      # to / cc via addressings_to / addressings_cc
+  note_mentions: false
+  version_status_write: true
+  author_attribution: true   # nested sudo_as_login for the real author
+  transcript_storage: [tracker_entity, dna_only]
+  impersonation: sudo_header
+
+roles:
+  project: [project]
+  subject: [shot, asset]
+  task: [task]
+  reviewable: [version]
+  collection: [playlist]
+  person: [user]
+  note: [note]
+
+# DNA kind -> ShotGrid entity.  ``fields`` / ``links`` map ShotGrid field -> DNA field.
+entities:
+  project:
+    source: Project
+    fields: {id: id, name: name}
+    links: {}
+  shot:
+    source: Shot
+    fields: {id: id, code: name, description: description, project: project}
+    links: {tasks: tasks}
+  asset:
+    source: Asset
+    fields: {id: id, code: name, description: description, project: project}
+    links: {tasks: tasks}
+  note:
+    source: Note
+    fields: {id: id, subject: subject, content: content, project: project}
+    links: {note_links: note_links, created_by: author}
+  task:
+    source: Task
+    fields: {id: id, sg_status_list: status, step: pipeline_step, content: name, project: project}
+    links: {entity: entity}
+  version:
+    source: Version
+    fields:
+      id: id
+      code: name
+      description: description
+      sg_status_list: status
+      user: user
+      created_at: created_at
+      updated_at: updated_at
+      sg_path_to_movie: movie_path
+      sg_path_to_frames: frame_path
+      project: project
+      image: thumbnail
+    links: {entity: entity, sg_task: task, notes: notes}
+  playlist:
+    source: Playlist
+    fields: {id: id, code: code, description: description, project: project, created_at: created_at, updated_at: updated_at}
+    links: {versions: versions}
+  user:
+    source: HumanUser
+    fields: {id: id, name: name, email: email, login: login}
+    links: {}
+
+urls:
+  version_detail: "{base}/detail/{type}/{id}"
+  entity_detail: "{base}/detail/{type}/{id}"
+
+errors:
+  # ShotGrid reports a permission denial and an outage as the same exception
+  # type, so the message text is the only signal.
+  permission_markers:
+    - permission
+    - not authorized
+    - unauthorized
+    - access denied
+    - does not have access
+    - cannot be accessed
+    - restricted
+
+# Names that only mean something to the ShotGrid API (the transport adapter's own
+# schema; see ShotgridAdapter in shotgrid.py).
+adapter:
+  status_field: sg_status_list         # on the version entity; read, write and schema
+  project_members_field: users         # on Project: who has access
+  note:
+    to_field: addressings_to
+    cc_field: addressings_cc
+    attachments_field: attachments
+    author_email_field: created_by.HumanUser.email
+    created_at_field: created_at
+  transcript:                          # fields of the custom entity holding transcripts
+    code: code
+    project: project
+    playlist: sg_playlist
+    version: sg_version_in_review
+    meeting_id: sg_meeting_id
+    meeting_date: sg_meeting_date
+    platform: sg_platform
+    body: sg_transcript_body

@@ -4,6 +4,7 @@ import {
   StoredSegment,
   type DNAEvent,
   type TranscriptEventPayload,
+  type EntityId,
 } from '@dna/core';
 import {
   createTranscriptManager,
@@ -14,8 +15,8 @@ import { apiHandler } from '../api';
 import { useEventSubscription } from './useDNAEvents';
 
 export interface UseSegmentsOptions {
-  playlistId: number | null;
-  versionId: number | null;
+  playlistId: EntityId | null;
+  versionId: EntityId | null;
   enabled?: boolean;
 }
 

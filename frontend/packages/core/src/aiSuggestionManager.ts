@@ -8,6 +8,7 @@ import type { ApiHandler } from './apiHandler';
 import type {
   AISuggestionState,
   AISuggestionStateChangeCallback,
+  EntityId,
 } from './interfaces';
 
 export interface AISuggestionManagerOptions {
@@ -16,7 +17,7 @@ export interface AISuggestionManagerOptions {
 
 type StateMap = Map<string, AISuggestionState>;
 
-function buildKey(playlistId: number, versionId: number): string {
+function buildKey(playlistId: EntityId, versionId: EntityId): string {
   return `${playlistId}-${versionId}`;
 }
 
@@ -46,7 +47,7 @@ export class AISuggestionManager {
     this.debounceMs = options.debounceMs ?? 1000;
   }
 
-  private getState(playlistId: number, versionId: number): AISuggestionState {
+  private getState(playlistId: EntityId, versionId: EntityId): AISuggestionState {
     const key = buildKey(playlistId, versionId);
     let state = this.states.get(key);
     if (!state) {
@@ -57,8 +58,8 @@ export class AISuggestionManager {
   }
 
   private setState(
-    playlistId: number,
-    versionId: number,
+    playlistId: EntityId,
+    versionId: EntityId,
     updates: Partial<AISuggestionState>
   ): void {
     const key = buildKey(playlistId, versionId);
@@ -69,8 +70,8 @@ export class AISuggestionManager {
   }
 
   private notifyListeners(
-    playlistId: number,
-    versionId: number,
+    playlistId: EntityId,
+    versionId: EntityId,
     state: AISuggestionState
   ): void {
     for (const callback of this.listeners) {
@@ -82,15 +83,15 @@ export class AISuggestionManager {
     }
   }
 
-  getSuggestion(playlistId: number, versionId: number): string | null {
+  getSuggestion(playlistId: EntityId, versionId: EntityId): string | null {
     return this.getState(playlistId, versionId).suggestion;
   }
 
-  getFullState(playlistId: number, versionId: number): AISuggestionState {
+  getFullState(playlistId: EntityId, versionId: EntityId): AISuggestionState {
     return this.getState(playlistId, versionId);
   }
 
-  clearSuggestion(playlistId: number, versionId: number): void {
+  clearSuggestion(playlistId: EntityId, versionId: EntityId): void {
     this.setState(playlistId, versionId, {
       suggestion: null,
       error: null,
@@ -98,8 +99,8 @@ export class AISuggestionManager {
   }
 
   async generateSuggestion(
-    playlistId: number,
-    versionId: number,
+    playlistId: EntityId,
+    versionId: EntityId,
     userEmail: string,
     additionalInstructions?: string,
     model?: string
@@ -146,8 +147,8 @@ export class AISuggestionManager {
   }
 
   scheduleRegeneration(
-    playlistId: number,
-    versionId: number,
+    playlistId: EntityId,
+    versionId: EntityId,
     userEmail: string,
     additionalInstructions?: string,
     model?: string
@@ -182,7 +183,7 @@ export class AISuggestionManager {
     };
   }
 
-  getSnapshot(playlistId: number, versionId: number): AISuggestionState {
+  getSnapshot(playlistId: EntityId, versionId: EntityId): AISuggestionState {
     return this.getState(playlistId, versionId);
   }
 

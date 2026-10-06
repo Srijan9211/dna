@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DraftNote, DraftNoteUpdate, SearchResult } from '@dna/core';
+import { DraftNote, DraftNoteUpdate, SearchResult, type EntityId } from '@dna/core';
 import { apiHandler } from '../api';
 
 export interface LocalDraftNote {
@@ -12,13 +12,13 @@ export interface LocalDraftNote {
   versionStatus: string;
   published: boolean;
   edited: boolean;
-  publishedNoteId: number | null;
+  publishedNoteId: EntityId | null;
   attachmentIds: string[];
 }
 
 export interface UseDraftNoteParams {
-  playlistId: number | null | undefined;
-  versionId: number | null | undefined;
+  playlistId: EntityId | null | undefined;
+  versionId: EntityId | null | undefined;
   userEmail: string | null | undefined;
   currentVersion?: SearchResult | null;
   submitter?: SearchResult | null;
@@ -199,6 +199,7 @@ export function useDraftNote({
                 version_status: data.version_status ?? '',
                 published: false,
                 edited: data.edited ?? false,
+                attachment_ids: data.attachment_ids ?? [],
                 published_note_id: null,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
@@ -238,8 +239,8 @@ export function useDraftNote({
   });
 
   const lastContextRef = useRef<{
-    playlistId?: number | null;
-    versionId?: number | null;
+    playlistId?: EntityId | null;
+    versionId?: EntityId | null;
     userEmail?: string | null;
   }>({});
 

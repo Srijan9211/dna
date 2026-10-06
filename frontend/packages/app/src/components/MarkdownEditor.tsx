@@ -19,7 +19,12 @@ import {
   Minus,
   Image,
 } from 'lucide-react';
-import { SearchResult, filterMentionCandidates } from '@dna/core';
+import {
+  SearchResult,
+  filterMentionCandidates,
+  parseMentionKey,
+  type EntityId,
+} from '@dna/core';
 import { apiHandler } from '../api';
 import {
   useMentionIndex,
@@ -39,7 +44,7 @@ interface MarkdownEditorProps {
   onToggleAttachmentTray?: () => void;
   placeholder?: string;
   minHeight?: number;
-  projectId?: number | null;
+  projectId?: EntityId | null;
   onMentionInsert?: (entity: SearchResult) => void;
 }
 
@@ -618,12 +623,13 @@ export function MarkdownEditor({
     if (!mention.command) return;
     mention.command(attrs);
 
-    // Parse type and id from "type:id" format and sync to properties panel
-    const [type, idStr] = attrs.id.split(':');
-    if (type && idStr) {
+    // Parse type and id from "type:id" format and sync to properties panel.
+    // (The id may itself contain a colon: AYON ids are "<project>:<uuid>".)
+    const parsed = parseMentionKey(attrs.id);
+    if (parsed) {
       const entity: SearchResult = {
-        type: type.charAt(0).toUpperCase() + type.slice(1),
-        id: parseInt(idStr, 10),
+        type: parsed.type.charAt(0).toUpperCase() + parsed.type.slice(1),
+        id: parsed.id,
         name: attrs.label,
       };
       onMentionInsertRef.current?.(entity);

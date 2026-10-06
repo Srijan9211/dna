@@ -1,3 +1,5 @@
+import type { EntityId } from './interfaces';
+
 export type EventType =
   | 'transcript'
   | 'bot.status_changed'
@@ -21,15 +23,15 @@ export interface TranscriptEventPayload {
   speaker?: string;
   confirmed?: Array<Record<string, unknown>>;
   pending?: Array<Record<string, unknown>>;
-  playlist_id: number;
-  version_id: number;
+  playlist_id: EntityId;
+  version_id: EntityId;
   ts?: string;
 }
 
 export interface BotStatusEventPayload {
   platform: string;
   meeting_id: string;
-  playlist_id?: number;
+  playlist_id?: EntityId;
   status: string;
   message?: string;
   recovered?: boolean;

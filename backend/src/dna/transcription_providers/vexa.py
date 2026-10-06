@@ -6,7 +6,6 @@ Implementation of the transcription provider using Vexa API.
 import asyncio
 import json
 import logging
-import os
 from datetime import datetime
 from typing import Any, Optional
 
@@ -14,6 +13,7 @@ import httpx
 import websockets
 from websockets.exceptions import ConnectionClosed
 
+from dna.configsys import get_config
 from dna.models.transcription import (
     BotSession,
     BotStatus,
@@ -48,8 +48,9 @@ class VexaTranscriptionProvider(TranscriptionProviderBase):
     """Transcription provider implementation using Vexa API."""
 
     def __init__(self):
-        self.base_url = os.getenv("VEXA_API_URL", "https://api.cloud.vexa.ai")
-        self.api_key = os.getenv("VEXA_API_KEY", "")
+        vexa_cfg = get_config().get("transcription").vexa
+        self.base_url = vexa_cfg.api_url
+        self.api_key = vexa_cfg.api_key
         self._client: Optional[httpx.AsyncClient] = None
         self._ws_connection: Optional[websockets.WebSocketClientProtocol] = None
         self._ws_task: Optional[asyncio.Task[None]] = None

@@ -48,7 +48,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-import os
 import secrets
 import time
 import uuid
@@ -60,6 +59,7 @@ try:
 except ImportError:
     raise ImportError("PyJWT is required: pip install PyJWT")
 
+from dna.configsys import get_config
 from dna.auth.session_store import (
     AbstractSessionStore,
     ShotGridCredentials,
@@ -133,38 +133,47 @@ def refresh_cookie_settings() -> dict:
         ValueError: An invalid combination, e.g. ``samesite=none`` without
             ``secure``, which browsers reject silently.
     """
-    samesite = os.getenv("REFRESH_COOKIE_SAMESITE", "strict").strip().lower()
-    if samesite not in {"strict", "lax", "none"}:
-        raise ValueError(
-            f"REFRESH_COOKIE_SAMESITE must be strict, lax or none (got '{samesite}')."
-        )
-    secure = os.getenv("REFRESH_COOKIE_SECURE", "true").strip().lower() not in {
-        "0",
-        "false",
-        "no",
-    }
-    if samesite == "none" and not secure:
-        raise ValueError(
-            "REFRESH_COOKIE_SAMESITE=none requires REFRESH_COOKIE_SECURE=true; "
-            "browsers reject the cookie otherwise."
-        )
+    # Validation (and its error wording) lives with the config section, so a bad
+    # value is also caught at startup rather than on first login.
+    cookie = get_config().get("auth").refresh_cookie
     return {
         "httponly": True,
-        "secure": secure,
-        "samesite": samesite,
+        "secure": cookie.secure,
+        "samesite": cookie.samesite,
         "path": REFRESH_COOKIE_PATH,
     }
 
 
-class ShotGridSSOProvider(AuthProviderBase):
-    """Production auth provider — ShotGrid username + Legacy Password (PAT)."""
+class SessionAuthProvider(AuthProviderBase):
+    """Session-based auth for a production tracker (the tracker-neutral half).
+
+    Owns everything that must be identical whichever tracker verifies the password:
+    the signed access token, the rotating httpOnly refresh cookie with reuse
+    detection, server-side sessions with revocation, idle and absolute lifetimes,
+    and logout.  A subclass supplies only what is tracker-specific:
+
+    * :meth:`login` — verify the credentials with the tracker and open a session
+      (see :meth:`_start_session`);
+    * :meth:`get_login_info` — which form the frontend should show;
+    * :meth:`_confirm_access` — end the session if the tracker account was
+      deactivated.
+
+    The tracker's own login name is recorded on the session
+    (``UserSession.tracker_login``); the prodtrack provider uses it to act as
+    that user, so the tracker enforces the user's own permissions.
+    """
+
+    # Shown in messages ("Session is missing the ShotGrid login name").
+    TRACKER_NAME = "tracker"
+    # Recorded on each session so downstream code can tell which path created it.
+    SESSION_PROVIDER_NAME = ""
 
     def __init__(
         self,
         session_store: Optional[AbstractSessionStore] = None,
-        sg_auth_client: Optional[ShotGridAuthClient] = None,
     ) -> None:
-        secret = os.getenv("JWT_SECRET_KEY") or ""
+        auth_cfg = get_config().get("auth")
+        secret = auth_cfg.jwt.secret_key
         if len(secret) < MIN_JWT_SECRET_LENGTH:
             # HS256 security rests entirely on this key: anyone who can guess it
             # can mint a token for any user. Refuse to start with a missing or
@@ -175,29 +184,49 @@ class ShotGridSSOProvider(AuthProviderBase):
                 "openssl rand -hex 32"
             )
         self._secret = secret
-        self._algorithm = os.getenv("JWT_ALGORITHM", "HS256")
-        self._issuer = os.getenv("JWT_ISSUER", DEFAULT_JWT_ISSUER)
-        self._audience = os.getenv("JWT_AUDIENCE", DEFAULT_JWT_AUDIENCE)
-        self._expire_seconds = (
-            int(os.getenv("JWT_EXPIRE_MINUTES", str(DEFAULT_ACCESS_TOKEN_MINUTES))) * 60
-        )
-        self._max_session_seconds = int(
-            os.getenv(
-                "SESSION_MAX_LIFETIME_SECONDS",
-                str(DEFAULT_SESSION_MAX_LIFETIME_SECONDS),
-            )
-        )
+        self._algorithm = auth_cfg.jwt.algorithm
+        self._issuer = auth_cfg.jwt.issuer
+        self._audience = auth_cfg.jwt.audience
+        self._expire_seconds = auth_cfg.jwt.access_token_minutes * 60
+        self._max_session_seconds = auth_cfg.session.max_lifetime_seconds
 
         self._sessions: AbstractSessionStore = session_store or _lazy_session_store()
-        # _sg_auth is initialised lazily via _get_sg_auth() to avoid failing
-        # at startup when SHOTGRID_URL is not yet configured.
-        self._sg_auth_override: Optional[ShotGridAuthClient] = sg_auth_client
 
-    def _get_sg_auth(self) -> "ShotGridAuthClient":
-        """Return the ShotGrid auth client, initialising it on first use."""
-        if self._sg_auth_override is not None:
-            return self._sg_auth_override
-        return _lazy_sg_auth_client()
+    # ── Tracker-specific hooks ────────────────────────────────────────── #
+
+    def login(self, username: str, password: str) -> AuthResult:
+        """Verify ``username`` / ``password`` with the tracker and open a session."""
+        raise NotImplementedError
+
+    def get_login_info(self) -> dict:
+        """Report the login mode so the frontend renders the right form."""
+        raise NotImplementedError
+
+    def _confirm_access(self, session: UserSession) -> None:
+        """End the session (raising ``ValueError``) if the account is no longer active."""
+        raise NotImplementedError
+
+    def _start_session(self, email: str, name: str, **credentials) -> AuthResult:
+        """Create and store a session for a verified user; return its tokens.
+
+        ``credentials`` names the tracker identity record (``shotgrid=...`` or
+        ``ayon=...``).  It holds a login name and ids, never a password or token.
+        """
+        refresh_secret = secrets.token_urlsafe(32)
+        session = UserSession(
+            session_id=str(uuid.uuid4()),
+            jti=str(uuid.uuid4()),
+            email=email,
+            name=name,
+            auth_provider=self.SESSION_PROVIDER_NAME,
+            dna_refresh_token_hash=_hash_secret(refresh_secret),
+            **credentials,
+        )
+        self._sessions.create_session(session)
+        return AuthResult(
+            body=self._token_body(session),
+            refresh_cookie=_build_refresh_cookie(session.session_id, refresh_secret),
+        )
 
     # ── AuthProviderBase ──────────────────────────────────────────────── #
 
@@ -210,64 +239,6 @@ class ShotGridSSOProvider(AuthProviderBase):
         """
         claims, _ = self.authenticate(token)
         return claims
-
-    # ── PAT login ─────────────────────────────────────────────────────── #
-
-    def login(self, username: str, password: str) -> AuthResult:
-        """Authenticate with ShotGrid username + Legacy Password.
-
-        Args:
-            username: ShotGrid login name or email address.
-            password: ShotGrid Legacy Login password (cloud) or actual password (on-prem).
-
-        Returns:
-            The access token in ``body`` and a new refresh cookie value.
-
-        Raises:
-            ValueError: ShotGrid rejected the credentials, or the user could not
-                be resolved or is not active.
-        """
-        # Success is all that matters here. The ShotGrid tokens in the response
-        # are deliberately not kept: requests use sudo_as_login, and a stored
-        # user token would be a renewable ShotGrid credential in the database.
-        self._get_sg_auth().login_user(username, password)
-        user_info = self._get_sg_auth().get_user_info(username)
-
-        refresh_secret = secrets.token_urlsafe(32)
-        session = UserSession(
-            session_id=str(uuid.uuid4()),
-            jti=str(uuid.uuid4()),
-            email=user_info.email,
-            name=user_info.name,
-            auth_provider=AUTH_PROVIDER_NAME,
-            shotgrid=ShotGridCredentials(
-                user_id=user_info.sg_user_id,
-                # Store the HumanUser.login resolved from ShotGrid, not what was
-                # typed into the form. sudo_as_login matches on the login field,
-                # and on cloud sites users sign in with their email, which is not
-                # always the same string. Falling back to the submitted value
-                # keeps sites where the two are identical working.
-                username=user_info.login or username,
-            ),
-            dna_refresh_token_hash=_hash_secret(refresh_secret),
-        )
-        self._sessions.create_session(session)
-
-        return AuthResult(
-            body=self._token_body(session),
-            refresh_cookie=_build_refresh_cookie(session.session_id, refresh_secret),
-        )
-
-    # ── Login info (mode detection for frontend) ─────────────────────── #
-
-    def get_login_info(self) -> dict:
-        """Report the login mode so the frontend renders the right form.
-
-        Only the ShotGrid username + password form is supported.
-        """
-        return {"mode": "pat"}
-
-    # ── Token refresh ─────────────────────────────────────────────────── #
 
     def refresh_session(self, refresh_cookie: str) -> AuthResult:
         """Exchange a refresh cookie for a new access token, rotating the cookie.
@@ -314,8 +285,6 @@ class ShotGridSSOProvider(AuthProviderBase):
         # session ids are visible inside every access token, so revoking here
         # would let anyone who has seen one log that user out at will.
         raise ValueError("Invalid refresh token. Please log in again.")
-
-    # ── Logout / revocation ───────────────────────────────────────────── #
 
     def logout(
         self, access_token: Optional[str], refresh_cookie: Optional[str]
@@ -378,8 +347,6 @@ class ShotGridSSOProvider(AuthProviderBase):
         logger.info("Ended %d session(s) via logout-all.", ended)
         return ended
 
-    # ── Session retrieval (prodtrack dependency) ──────────────────────── #
-
     def get_session_for_request(self, token: str) -> UserSession:
         """Validate the access token and return its active session.
 
@@ -394,8 +361,6 @@ class ShotGridSSOProvider(AuthProviderBase):
         """
         _, session = self.authenticate(token)
         return session
-
-    # ── Internal ──────────────────────────────────────────────────────── #
 
     def authenticate(self, token: str) -> tuple[dict, UserSession]:
         """Verify an access token and load its session, in one pass.
@@ -457,40 +422,13 @@ class ShotGridSSOProvider(AuthProviderBase):
                 return AuthResult(body=self._token_body(current), refresh_cookie=None)
             raise ValueError("Your session has ended. Please log in again.")
 
-        # Only the winner of the swap talks to ShotGrid: concurrent tabs cost
+        # Only the winner of the swap talks to the tracker: concurrent tabs cost
         # one account check, not one each.
-        self._confirm_shotgrid_access(rotated)
+        self._confirm_access(rotated)
         return AuthResult(
             body=self._token_body(rotated),
             refresh_cookie=_build_refresh_cookie(rotated.session_id, new_secret),
         )
-
-    def _confirm_shotgrid_access(self, session: UserSession) -> None:
-        """End the session if its ShotGrid account is no longer active.
-
-        The check uses the script account, so DNA needs no ShotGrid token of the
-        user's. If ShotGrid is merely unreachable the session is kept: the check
-        is retried on the next refresh, and the absolute lifetime still applies.
-        """
-        if not (session.sg_user_id and session.sg_username):
-            self._sessions.delete_session(session.session_id)
-            raise ValueError("Your session cannot be renewed. Please log in again.")
-
-        try:
-            self._get_sg_auth().confirm_user_active(
-                session.sg_user_id, session.sg_username
-            )
-        except ShotGridUnavailable as exc:
-            logger.warning(
-                "ShotGrid unavailable during refresh; keeping session and "
-                "rechecking on the next refresh: %s",
-                exc,
-            )
-        except ValueError as exc:
-            # ShotGrid answered and the account may not sign in. Deleting the
-            # session revokes every access token issued for it.
-            self._sessions.delete_session(session.session_id)
-            raise ValueError(f"{exc} Please log in again.")
 
     def _token_body(self, session: UserSession) -> dict:
         return {
@@ -499,24 +437,23 @@ class ShotGridSSOProvider(AuthProviderBase):
                 session.session_id,
                 session.email,
                 session.name,
-                session.sg_user_id,
+                session.tracker_user_id,
             ),
             "token_type": "Bearer",
             "expires_in": self._expire_seconds,
             "user": {
-                "id": session.sg_user_id,
+                "id": session.tracker_user_id,
                 "email": session.email,
                 "name": session.name,
-                "shotgrid_user_id": session.sg_user_id,
             },
         }
 
-    def _mint_jwt(self, jti, session_id, email, name, sg_user_id) -> str:
-        """Mint a signed DNA JWT. No SG token inside — server-side only."""
+    def _mint_jwt(self, jti, session_id, email, name, tracker_user_id) -> str:
+        """Mint a signed DNA JWT. No tracker credential inside — server-side only."""
         now = int(time.time())
         payload = {
             "jti": jti,
-            "sub": str(sg_user_id),
+            "sub": str(tracker_user_id),
             "session_id": session_id,
             "email": email,
             "name": name or email,
@@ -549,7 +486,102 @@ class ShotGridSSOProvider(AuthProviderBase):
             raise ValueError(f"Invalid authentication token: {exc}")
 
 
-# ── Refresh-token helpers ─────────────────────────────────────────────────────
+class ShotGridSSOProvider(SessionAuthProvider):
+    """Production auth provider — ShotGrid username + Legacy Password (PAT)."""
+
+    TRACKER_NAME = "ShotGrid"
+    SESSION_PROVIDER_NAME = AUTH_PROVIDER_NAME
+
+    def __init__(
+        self,
+        session_store: Optional[AbstractSessionStore] = None,
+        sg_auth_client: Optional[ShotGridAuthClient] = None,
+    ) -> None:
+        super().__init__(session_store)
+        # _sg_auth is initialised lazily via _get_sg_auth() to avoid failing
+        # at startup when SHOTGRID_URL is not yet configured.
+        self._sg_auth_override: Optional[ShotGridAuthClient] = sg_auth_client
+
+    def _get_sg_auth(self) -> "ShotGridAuthClient":
+        """Return the ShotGrid auth client, initialising it on first use."""
+        if self._sg_auth_override is not None:
+            return self._sg_auth_override
+        return _lazy_sg_auth_client()
+
+    # ── PAT login ─────────────────────────────────────────────────────── #
+
+    def login(self, username: str, password: str) -> AuthResult:
+        """Authenticate with ShotGrid username + Legacy Password.
+
+        Args:
+            username: ShotGrid login name or email address.
+            password: ShotGrid Legacy Login password (cloud) or actual password (on-prem).
+
+        Returns:
+            The access token in ``body`` and a new refresh cookie value.
+
+        Raises:
+            ValueError: ShotGrid rejected the credentials, or the user could not
+                be resolved or is not active.
+        """
+        # Success is all that matters here. The ShotGrid tokens in the response
+        # are deliberately not kept: requests use sudo_as_login, and a stored
+        # user token would be a renewable ShotGrid credential in the database.
+        self._get_sg_auth().login_user(username, password)
+        user_info = self._get_sg_auth().get_user_info(username)
+
+        return self._start_session(
+            user_info.email,
+            user_info.name,
+            shotgrid=ShotGridCredentials(
+                user_id=user_info.sg_user_id,
+                # Store the HumanUser.login resolved from ShotGrid, not what was
+                # typed into the form. sudo_as_login matches on the login field,
+                # and on cloud sites users sign in with their email, which is not
+                # always the same string. Falling back to the submitted value
+                # keeps sites where the two are identical working.
+                username=user_info.login or username,
+            ),
+        )
+
+    def get_login_info(self) -> dict:
+        """Report the login mode so the frontend renders the right form.
+
+        Only the ShotGrid username + password form is supported.
+        """
+        return {"mode": "pat"}
+
+    def _confirm_access(self, session: UserSession) -> None:
+        """End the session if its ShotGrid account is no longer active.
+
+        The check uses the script account, so DNA needs no ShotGrid token of the
+        user's. If ShotGrid is merely unreachable the session is kept: the check
+        is retried on the next refresh, and the absolute lifetime still applies.
+        """
+        if not (session.sg_user_id and session.sg_username):
+            self._sessions.delete_session(session.session_id)
+            raise ValueError("Your session cannot be renewed. Please log in again.")
+
+        try:
+            self._get_sg_auth().confirm_user_active(
+                session.sg_user_id, session.sg_username
+            )
+        except ShotGridUnavailable as exc:
+            logger.warning(
+                "ShotGrid unavailable during refresh; keeping session and "
+                "rechecking on the next refresh: %s",
+                exc,
+            )
+        except ValueError as exc:
+            # ShotGrid answered and the account may not sign in. Deleting the
+            # session revokes every access token issued for it.
+            self._sessions.delete_session(session.session_id)
+            raise ValueError(f"{exc} Please log in again.")
+
+    def _token_body(self, session: UserSession) -> dict:
+        body = super()._token_body(session)
+        body["user"]["shotgrid_user_id"] = session.sg_user_id
+        return body
 
 
 def _hash_secret(secret: str) -> str:

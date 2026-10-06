@@ -1,0 +1,105 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Contributors to the Dailies Notes Assistant Project.
+#
+# AYON connector profile (contract dna.prodtrack/1), written against AYON 1.16.
+#
+# AYON has no Shot/Asset/Version split of its own: a "folder" has a folderType, a
+# version belongs to a product that belongs to a folder, and "notes" are comment
+# activities.  This profile says which folderTypes DNA treats as shots and as assets;
+# a studio with different folder types overrides just that (prodtrack.profile):
+#
+#   prodtrack:
+#     profile:
+#       entities:
+#         shot:  {where: {folderType: [Shot, Sequence]}}
+#         asset: {where: {folderType: [Asset, Character, Prop]}}
+#
+# Field keys are AYON GraphQL paths; ``attrib.<name>`` reads a custom attribute, so
+# a studio can map its own (``attrib.vendorNotes: description``).
+
+connector: ayon
+display_name: AYON
+
+labels:
+  project: Project
+  shot: Shot
+  asset: Asset
+  task: Task
+  version: Version
+  playlist: List
+  user: User
+  note: Comment
+
+capabilities:
+  playlists: true
+  create_playlist: true
+  add_to_playlist: true
+  notes: true
+  note_attachments: true
+  note_addressing: false     # no to/cc; recipients become @mentions in the comment
+  note_mentions: true
+  version_status_write: true
+  author_attribution: true   # x-as-user for the real author
+  transcript_storage: [note_attachment, dna_only]
+  impersonation: sudo_header
+
+roles:
+  project: [project]
+  subject: [shot, asset]
+  task: [task]
+  reviewable: [version]
+  collection: [playlist]
+  person: [user]
+  note: [note]
+
+entities:
+  project:
+    source: project
+    fields: {name: name}
+  shot:
+    source: folder
+    where: {folderType: [Shot]}
+    fields: {name: name, attrib.description: description}
+  asset:
+    source: folder
+    where: {folderType: [Asset]}
+    fields: {name: name, attrib.description: description}
+  task:
+    source: task
+    fields: {name: name, status: status}
+  version:
+    source: version
+    fields:
+      status: status
+      attrib.description: description
+      createdAt: created_at
+      updatedAt: updated_at
+  playlist:
+    source: entityList
+    fields: {label: code, createdAt: created_at, updatedAt: updated_at}
+  user:
+    source: user
+    fields: {name: login, attrib.fullName: name, attrib.email: email}
+  note:
+    source: activity
+    fields: {body: content}
+
+# Deep links into the AYON web UI.  ``{project}`` is the project name.  These open
+# the project's pages; AYON's per-entity deep-link query parameters are not yet
+# confirmed, so confirm against your server before relying on entity-level links.
+urls:
+  version_detail: "{base}/projects/{project}/products"
+  entity_detail: "{base}/projects/{project}/browser"
+
+errors:
+  permission_markers: []     # AYON uses real HTTP status codes
+
+# Names that only mean something to the AYON adapter (see AyonAdapter in ayon.py).
+adapter:
+  version_name: "{folder}_{product}_{version}"   # how a version is titled in DNA
+  unmatched_subject_kind: shot                   # for a folder type neither list covers
+  list_type: generic
+  comment_activity_type: comment
+  # A mention as a Markdown link with a user: target.  Unconfirmed that AYON
+  # registers it as a notification; it reads as plain "@login" either way.
+  mention_template: "[@{login}](user:{login})"

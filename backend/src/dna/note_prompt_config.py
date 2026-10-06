@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from dna.configsys import get_config
 
 _CONFIG_DIR = Path(__file__).resolve().parent / "config"
 _DEFAULT_RELATIVE = _CONFIG_DIR / "default_note_prompt.yaml"
@@ -15,7 +16,7 @@ _DEFAULT_RELATIVE = _CONFIG_DIR / "default_note_prompt.yaml"
 
 def default_note_prompt_config_path() -> Path:
     """Path to the default note prompt YAML (override with DNA_DEFAULT_NOTE_PROMPT_PATH)."""
-    override = os.environ.get("DNA_DEFAULT_NOTE_PROMPT_PATH")
+    override = get_config().get("content").default_note_prompt_path
     if override:
         return Path(override).expanduser().resolve()
     return _DEFAULT_RELATIVE.resolve()

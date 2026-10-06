@@ -1,0 +1,14 @@
+# Keep the code graph to this repo's own source: no worktree copies, sample data or build output.
+.claude/
+.cursor/
+worktrees/
+sample_dailies_dataset/
+images/
+**/htmlcov/
+**/dist/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+**/coverage/
+backend/tests/golden/*.json
+experimental/

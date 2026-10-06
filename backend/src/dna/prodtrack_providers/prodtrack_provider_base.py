@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from dna.models.entity import EntityBase, Playlist, Project, User, Version
+    from dna.media_proxy import MediaStream
+    from dna.prodtrack_providers.handshake import Check, TrackerSchema
+    from dna.prodtrack_providers.profile import Capabilities, ConnectorProfile
 
 
 class UserNotFoundError(Exception):
@@ -39,8 +42,62 @@ class ProdtrackUnavailableError(Exception):
 
 
 class ProdtrackProviderBase:
+    # True when the connector can act as the signed-in user (ShotGrid's
+    # ``sudo_as_login``).  The factory only passes an identity to such providers.
+    SUPPORTS_IMPERSONATION = False
+
+    # The connector profile this provider was built from (None for a provider
+    # that predates profiles).
+    profile: Optional["ConnectorProfile"] = None
+
     def __init__(self):
         pass
+
+    # True when a version's ``thumbnail`` / ``movie_path`` need credentials a browser
+    # cannot send.  DNA then serves them through its signed-URL media proxy.
+    MEDIA_REQUIRES_PROXY = False
+
+    def open_media(self, version_id: Any, kind: str, range_header: "Optional[str]" = None) -> "MediaStream":
+        """Open a version's ``thumbnail`` or ``movie`` for streaming to the browser.
+
+        Only connectors with ``MEDIA_REQUIRES_PROXY`` implement this.  ``range_header``
+        is the browser's ``Range`` so video can seek.  Raises ``ValueError`` if the
+        version has no such media.
+        """
+        raise NotImplementedError("This connector's media is served directly.")
+
+    # ── handshake hooks (see dna.prodtrack_providers.handshake) ───────────
+
+    @classmethod
+    def for_handshake(cls, prodtrack_config: Any, profile: "ConnectorProfile") -> "ProdtrackProviderBase":
+        """Build a provider for a *candidate* configuration, without touching the
+        process-wide config.  ``prodtrack_config`` is a ``ProdtrackSection``."""
+        return cls()
+
+    def check_connection(self) -> dict[str, Any]:
+        """Reach the tracker and authenticate; return facts worth showing an admin
+        (server version, the account used).  Raise on failure.  Never write."""
+        raise NotImplementedError("This connector cannot test its connection.")
+
+    def discover_schema(self) -> "TrackerSchema":
+        """Read the tracker's real schema so the profile can be checked against it."""
+        raise NotImplementedError("This connector cannot read its tracker's schema.")
+
+    def adapter_issues(self, schema: "TrackerSchema") -> "list[Check]":
+        """Problems in the adapter's own settings (names the core profile does not
+        model) given the discovered schema."""
+        return []
+
+    def capabilities(self) -> "Capabilities":
+        """What this connector can do, from its profile.
+
+        DNA consults this to disable a feature (note attachments, to/cc
+        addressing, playlist creation ...) a connector cannot support, rather
+        than letting the call fail.  Without a profile every feature is assumed.
+        """
+        from dna.prodtrack_providers.profile import Capabilities
+
+        return self.profile.capabilities if self.profile is not None else Capabilities()
 
     @staticmethod
     def build_version_context(version: Version) -> str:
@@ -261,6 +318,14 @@ class ProdtrackProviderBase:
         """
         raise NotImplementedError("Subclasses must implement this method.")
 
+    def transcript_entity_type(self, project_id: Any = None) -> str:
+        """Name of the tracker entity a published transcript is stored in.
+
+        DNA records it next to the transcript's id so a later update targets the
+        same entity even if the studio moves to a different slot.
+        """
+        return "transcript"
+
     def publish_transcript(
         self,
         *,
@@ -322,29 +387,23 @@ def get_prodtrack_provider(
         ``get_user_scoped_prodtrack_provider`` in main.py enforces this by
         failing closed with 401 when the session carries no login name.
     """
-    provider_type = os.getenv("PRODTRACK_PROVIDER", "shotgrid")
+    from dna.configsys import get_config, providers
 
-    if provider_type == "mock":
-        from dna.prodtrack_providers.mock_provider import MockProdtrackProvider
+    cfg = get_config().get("prodtrack")
+    provider_cls = providers.prodtrack.resolve(cfg.connector)
 
-        return MockProdtrackProvider()
-
-    if provider_type == "shotgrid":
-        sg_url = os.getenv("SHOTGRID_URL")
-        sg_script = os.getenv("SHOTGRID_SCRIPT_NAME")
-        sg_key = os.getenv("SHOTGRID_API_KEY")
-        if not all([sg_url, sg_script, sg_key]):
+    if cfg.connector == "shotgrid":
+        sg = cfg.shotgrid
+        if not all([sg.url, sg.script_name, sg.api_key]):
             raise ValueError(
                 "ShotGrid credentials not provided. Set SHOTGRID_URL, "
                 "SHOTGRID_SCRIPT_NAME, and SHOTGRID_API_KEY, or use "
                 "PRODTRACK_PROVIDER=mock for the mock provider."
             )
-        from dna.prodtrack_providers.shotgrid import ShotgridProvider
 
-        if sudo_login:
-            return ShotgridProvider(sudo_user=sudo_login, session_id=session_id)
+    if sudo_login and getattr(provider_cls, "SUPPORTS_IMPERSONATION", False):
+        return provider_cls(sudo_user=sudo_login, session_id=session_id)
 
-        # Script account: unauthenticated contexts only (background jobs, dev mode).
-        return ShotgridProvider()
-
-    raise ValueError(f"Unknown production tracking provider: {provider_type}")
+    # Script/service account: unauthenticated contexts only (background jobs,
+    # dev mode), or a connector with no impersonation support.
+    return provider_cls()

@@ -12,6 +12,7 @@ import type {
 import { apiHandler } from '../api';
 import { usePlaylistMetadata } from './usePlaylistMetadata';
 import { useEventClient, useToast } from '../contexts';
+import type { EntityId } from '@dna/core';
 
 export interface ParsedMeetingUrl {
   platform: Platform;
@@ -50,7 +51,7 @@ export function parseMeetingUrl(url: string): ParsedMeetingUrl | null {
 }
 
 export interface UseTranscriptionOptions {
-  playlistId: number | null;
+  playlistId: EntityId | null;
 }
 
 export interface UseTranscriptionReturn {

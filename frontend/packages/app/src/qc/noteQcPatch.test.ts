@@ -7,6 +7,7 @@ import {
   fixAllDisabledReason,
   getAffectedQCFields,
   mergeQCResultPatches,
+  normalizeLinksFromPayload,
   normalizeQCResult,
   getQCPreviewRows,
 } from './noteQcPatch';
@@ -186,3 +187,42 @@ describe('noteQcPatch', () => {
     expect(rows.map((x) => x.field)).toEqual(['to']);
   });
 });
+
+describe('normalizeLinksFromPayload keeps tracker ids intact', () => {
+  const AYON_ID = 'dna_test:5fd4ea6ac19911f1877e42dd13c3d9cf';
+
+  it('keeps ShotGrid ids as numbers, including ids sent as text', () => {
+    expect(
+      normalizeLinksFromPayload([
+        { entity_type: 'Shot', entity_id: 7, entity_name: 'sh010' },
+        { type: 'Asset', id: '8' },
+      ])
+    ).toEqual([
+      { entity_type: 'Shot', entity_id: 7, entity_name: 'sh010' },
+      { entity_type: 'Asset', entity_id: 8, entity_name: undefined },
+    ]);
+  });
+
+  it('keeps AYON ids as strings instead of turning them into NaN', () => {
+    expect(
+      normalizeLinksFromPayload([
+        { entity_type: 'Shot', entity_id: AYON_ID },
+        { type: 'Version', id: AYON_ID },
+      ])
+    ).toEqual([
+      { entity_type: 'Shot', entity_id: AYON_ID, entity_name: undefined },
+      { entity_type: 'Version', entity_id: AYON_ID, entity_name: undefined },
+    ]);
+  });
+
+  it('drops a link whose id cannot be an id rather than inventing one', () => {
+    expect(
+      normalizeLinksFromPayload([
+        { entity_type: 'Shot', entity_id: null },
+        { entity_type: 'Shot', entity_id: '' },
+        { type: 'Asset', id: {} },
+      ])
+    ).toBeNull();
+  });
+});
+

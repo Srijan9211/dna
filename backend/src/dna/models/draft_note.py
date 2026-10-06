@@ -7,13 +7,14 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+from dna.models.ids import EntityId
 
 
 class DraftNoteLink(BaseModel):
     """Reference to a DNA entity to link to the note."""
 
     entity_type: str
-    entity_id: int
+    entity_id: EntityId
     entity_name: str = ""
 
 
@@ -37,8 +38,8 @@ class DraftNoteCreate(DraftNoteBase):
     """Model for creating a new draft note."""
 
     user_email: str
-    playlist_id: int
-    version_id: int
+    playlist_id: EntityId
+    version_id: EntityId
 
 
 class DraftNote(DraftNoteBase):
@@ -48,8 +49,8 @@ class DraftNote(DraftNoteBase):
 
     id: str = Field(alias="_id")
     user_email: str
-    playlist_id: int
-    version_id: int
+    playlist_id: EntityId
+    version_id: EntityId
     updated_at: datetime
     created_at: datetime
 

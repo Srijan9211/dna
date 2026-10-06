@@ -3,13 +3,14 @@
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
+from dna.models.ids import EntityId
 
 
 class EntityLink(BaseModel):
     """Reference to an existing entity for linking."""
 
     type: str = Field(description="Entity type (e.g., 'Version', 'Playlist', 'Shot')")
-    id: int = Field(description="Entity ID")
+    id: EntityId = Field(description="Entity ID")
 
 
 class CreateNoteRequest(BaseModel):
@@ -47,8 +48,8 @@ class FindRequest(BaseModel):
 class GenerateNoteRequest(BaseModel):
     """Request model for generating an AI note suggestion."""
 
-    playlist_id: int = Field(description="Playlist ID")
-    version_id: int = Field(description="Version ID")
+    playlist_id: EntityId = Field(description="Playlist ID")
+    version_id: EntityId = Field(description="Version ID")
     user_email: str = Field(description="User email address")
     additional_instructions: Optional[str] = Field(
         default=None,
@@ -87,7 +88,7 @@ class SearchRequest(BaseModel):
 class AddVersionToPlaylistRequest(BaseModel):
     """Request model for adding an existing version to a playlist."""
 
-    version_id: int = Field(description="ID of an existing version to add")
+    version_id: EntityId = Field(description="ID of an existing version to add")
 
 
 class CreatePlaylistRequest(BaseModel):
@@ -100,7 +101,7 @@ class SearchResult(BaseModel):
     """Lightweight entity representation for search results."""
 
     type: str = Field(description="Entity type (e.g., 'User', 'Shot', 'Asset')")
-    id: int = Field(description="Entity ID")
+    id: EntityId = Field(description="Entity ID")
     name: str = Field(description="Entity name")
     description: Optional[str] = Field(
         default=None, description="Entity description (for shots/assets/versions)"
@@ -122,7 +123,7 @@ class PublishNoteTarget(BaseModel):
     """A single draft note to publish (user + version key)."""
 
     user_email: str
-    version_id: int
+    version_id: EntityId
 
 
 class PublishNotesRequest(BaseModel):
@@ -174,13 +175,13 @@ class PublishNotesResponse(BaseModel):
 class PublishTranscriptRequest(BaseModel):
     """Request to publish a version's captured transcript."""
 
-    version_id: int = Field(description="Version whose segments to publish")
+    version_id: EntityId = Field(description="Version whose segments to publish")
 
 
 class PublishTranscriptResponse(BaseModel):
     """Response from the publish-transcript endpoint."""
 
-    transcript_entity_id: int = Field(
+    transcript_entity_id: EntityId = Field(
         description="Entity ID of the row in the tracking system"
     )
     outcome: str = Field(description="created | updated | skipped")

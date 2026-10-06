@@ -10,18 +10,19 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+from dna.models.ids import EntityId
 
 
 class PublishedTranscriptUpdate(BaseModel):
     """Upsert payload for the published_transcripts collection."""
 
-    playlist_id: int
-    version_id: int
+    playlist_id: EntityId
+    version_id: EntityId
     meeting_id: str
     entity_type: str = Field(
         description="Custom entity type in the tracking system (e.g. CustomEntity01)"
     )
-    entity_id: int = Field(description="ID of the row created in tracking system")
+    entity_id: EntityId = Field(description="ID of the row created in tracking system")
     author_email: str
     body_hash: str = Field(description="sha256 of the published body for idempotence")
     segments_count: int
@@ -33,11 +34,11 @@ class PublishedTranscript(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str = Field(alias="_id")
-    playlist_id: int
-    version_id: int
+    playlist_id: EntityId
+    version_id: EntityId
     meeting_id: str
     entity_type: str
-    entity_id: int
+    entity_id: EntityId
     author_email: str
     body_hash: str
     segments_count: int

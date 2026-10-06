@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Dialog, Flex } from '@radix-ui/themes';
 import type { DraftNote, Version } from '@dna/core';
 import { PublishNotesTabContent } from './PublishNotesDialog';
+import type { EntityId } from '@dna/core';
 
 export interface PublishDialogProps {
   open: boolean;
   onClose: () => void;
-  playlistId: number;
+  playlistId: EntityId;
   userEmail: string;
   notes: DraftNote[];
   versions?: Version[];

@@ -5,7 +5,6 @@ Abstract base class for LLM providers and factory function.
 
 import json
 import logging
-import os
 from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 import instructor
@@ -97,6 +96,9 @@ class LLMProviderBase:
     """Abstract base class for LLM providers."""
 
     LLM_PROVIDER_NAME = None
+    # Key of this provider's ``llm.profiles`` entry; defaults to the lowercased
+    # LLM_PROVIDER_NAME.  (The "custom" provider keeps its CUSTOM_LLM_* env names.)
+    LLM_PROFILE_NAME: Optional[str] = None
 
     DEFAULT_MODEL = None
     DEFAULT_TIMEOUT = 30.0
@@ -112,17 +114,29 @@ class LLMProviderBase:
                 f"{self.__class__.__name__} is missing an LLM_PROVIDER_NAME "
             )
 
-        api_env = f"{self.LLM_PROVIDER_NAME }_API_KEY"
-        self.api_key = api_key or os.getenv(api_env)
-
-        self.model = model or os.getenv(
-            f"{self.LLM_PROVIDER_NAME }_MODEL", self.DEFAULT_MODEL
-        )
-        self.timeout = timeout or float(
-            os.getenv(f"{self.LLM_PROVIDER_NAME }_TIMEOUT", str(self.DEFAULT_TIMEOUT))
-        )
+        profile = self._profile()
+        self.api_key = api_key or profile.api_key
+        self.model = model or profile.model or self.DEFAULT_MODEL
+        self.timeout = timeout or profile.timeout or self.DEFAULT_TIMEOUT
 
         self._client = None
+
+    def _profile(self):
+        """This provider's settings from ``llm.profiles`` (empty if unset).
+
+        Anything the profile leaves unset falls back to the provider's own
+        ``DEFAULT_*`` values, exactly as the old per-provider env vars did.
+        """
+        from dna.configsys import get_config
+        from dna.configsys.sections import llm_profile_from_env
+
+        name = self.LLM_PROFILE_NAME or (self.LLM_PROVIDER_NAME or "").lower()
+        profile = get_config().get("llm").profiles.get(name)
+        if profile is None:
+            # Not configured by name: honour {LLM_PROVIDER_NAME}_* env vars, as
+            # providers outside the built-ins always could.
+            profile = llm_profile_from_env(self.LLM_PROVIDER_NAME or "")
+        return profile
 
     @property
     def client(self) -> AsyncOpenAI:
@@ -359,26 +373,6 @@ class LLMProviderBase:
 
 def get_llm_provider() -> LLMProviderBase:
     """Factory function to get the configured LLM provider."""
-    provider_type = os.getenv("LLM_PROVIDER", "openai").lower()
+    from dna.configsys import get_config, providers
 
-    if provider_type == "anthropic":
-        from dna.llm_providers.anthropic_provider import AnthropicProvider
-
-        return AnthropicProvider()
-
-    if provider_type == "gemini":
-        from dna.llm_providers.gemini_provider import GeminiProvider
-
-        return GeminiProvider()
-
-    if provider_type == "openai":
-        from dna.llm_providers.openai_provider import OpenAIProvider
-
-        return OpenAIProvider()
-
-    if provider_type == "custom":
-        from dna.llm_providers.custom_provider import CustomProvider
-
-        return CustomProvider()
-
-    raise ValueError(f"Unknown LLM provider: {provider_type}")
+    return providers.llm.create(get_config().get("llm").provider)

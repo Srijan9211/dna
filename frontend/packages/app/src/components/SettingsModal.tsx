@@ -23,10 +23,12 @@ import type {
   UserSettingsUpdate,
 } from '@dna/core';
 import type { HotkeyAction } from '../hotkeys/hotkeysConfig';
-import { apiHandler } from '../api';
+import { apiHandler, useConfigAccess } from '../api';
 import { NoteQCTab } from './NoteQCTab';
 import { useHotkeyConfig } from '../hotkeys';
 import { useThemeMode, useFeatureFlags } from '../contexts';
+import type { EntityId } from '@dna/core';
+import { useLabels } from '../hooks/useLabels';
 
 /** The global glossary is a shared repo file — contributors edit it via PR. */
 const GLOBAL_GLOSSARY_GITHUB_URL =
@@ -35,7 +37,7 @@ const GLOBAL_GLOSSARY_GITHUB_URL =
 interface SettingsModalProps {
   userEmail: string;
   /** Current ShotGrid project id — scopes the editable project glossary. */
-  projectId: number | null;
+  projectId: EntityId | null;
   trigger?: ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -395,6 +397,8 @@ function GeneralTab({
   onSyncProdtrackTabOnVersionChange,
   onProdtrackPageTypeChange,
 }: GeneralTabProps) {
+  const label = useLabels();
+  const { data: access } = useConfigAccess();
   const { mode, setMode } = useThemeMode();
   const { inReviewEnabled, setInReviewEnabled, inReviewLocked, inReviewLockReason } =
     useFeatureFlags();
@@ -484,7 +488,7 @@ function GeneralTab({
               <RadioDot />
             </RadioIndicator>
             <CheckboxContent>
-              <CheckboxLabel>Version Detail</CheckboxLabel>
+              <CheckboxLabel>{label('version')} Detail</CheckboxLabel>
               <CheckboxDescription>Open the version&apos;s detail page</CheckboxDescription>
             </CheckboxContent>
           </RadioItem>
@@ -493,12 +497,36 @@ function GeneralTab({
               <RadioDot />
             </RadioIndicator>
             <CheckboxContent>
-              <CheckboxLabel>Shot / Asset Detail</CheckboxLabel>
+              <CheckboxLabel>{label('shot')} / {label('asset')} Detail</CheckboxLabel>
               <CheckboxDescription>Open the linked shot or asset detail page</CheckboxDescription>
             </CheckboxContent>
           </RadioItem>
         </RadioGroupRoot>
       </Section>
+
+      {access?.admin && (
+        <Section>
+          <SectionTitle>Administration</SectionTitle>
+          <AppearanceRow>
+            <KeybindingLabel>
+              <KeybindingName>Configuration</KeybindingName>
+              <KeybindingDesc>
+                Set up the production tracker, review settings and roll back changes
+              </KeybindingDesc>
+            </KeybindingLabel>
+            <Button
+              variant="soft"
+              onClick={() => {
+                const params = new URLSearchParams(window.location.search);
+                params.set('admin', 'config');
+                window.location.assign(`${window.location.pathname}?${params.toString()}`);
+              }}
+            >
+              Open
+            </Button>
+          </AppearanceRow>
+        </Section>
+      )}
     </ModalContent>
   );
 }
@@ -608,7 +636,7 @@ function TranscriptionTab() {
 // The project glossary is stored per ShotGrid project (not in user settings),
 // so it loads/saves itself against the current projectId and is independent of
 // the surrounding settings save-on-close flow.
-function ProjectGlossaryEditor({ projectId }: { projectId: number | null }) {
+function ProjectGlossaryEditor({ projectId }: { projectId: EntityId | null }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
@@ -693,7 +721,7 @@ function ProjectGlossaryEditor({ projectId }: { projectId: number | null }) {
 interface AITabProps {
   isLoading: boolean;
   notePrompt: string;
-  projectId: number | null;
+  projectId: EntityId | null;
   preferredModel: string;
   availableModels: AvailableModelsResponse | null;
   regenerateOnVersionChange: boolean;

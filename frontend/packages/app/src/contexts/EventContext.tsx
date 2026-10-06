@@ -15,6 +15,7 @@ import {
   type DNAEvent,
   type EventCallback,
 } from '@dna/core';
+import { useRuntimeConfig } from './RuntimeConfigContext';
 
 export type { EventType, DNAEvent, EventCallback };
 
@@ -30,21 +31,19 @@ interface EventContextValue {
 
 const EventContext = createContext<EventContextValue | null>(null);
 
-const WEBSOCKET_URL =
-  import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
-
 interface EventProviderProps {
   children: ReactNode;
 }
 
 export function EventProvider({ children }: EventProviderProps) {
+  const { wsUrl } = useRuntimeConfig();
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<Error | null>(null);
   const clientRef = useRef<DNAEventClient | null>(null);
 
   useEffect(() => {
     const client = createEventClient({
-      wsURL: WEBSOCKET_URL,
+      wsURL: wsUrl,
       debug: import.meta.env.DEV,
     });
 
@@ -63,7 +62,7 @@ export function EventProvider({ children }: EventProviderProps) {
       client.disconnect();
       clientRef.current = null;
     };
-  }, []);
+  }, [wsUrl]);
 
   const subscribe = useCallback(
     <T = unknown,>(

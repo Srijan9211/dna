@@ -22,7 +22,6 @@ All queries must go through the ``self._sg`` property rather than
 """
 
 import contextlib
-import os
 from datetime import date
 from typing import Any, Optional, cast
 
@@ -34,6 +33,8 @@ try:  # AuthenticationFault is absent from very old shotgun_api3 releases.
 except ImportError:  # pragma: no cover - depends on installed library version
     AuthenticationFault = None
 
+from dna.configsys import get_config
+from dna.configsys.meta import Section
 from dna.models.entity import (
     ENTITY_MODELS,
     EntityBase,
@@ -42,6 +43,8 @@ from dna.models.entity import (
     User,
     Version,
 )
+from dna.prodtrack_providers.mapper import ProfileMapper
+from dna.prodtrack_providers.profile import ConnectorProfile, load_profile
 from dna.prodtrack_providers.prodtrack_provider_base import (
     ProdtrackAuthError,
     ProdtrackPermissionError,
@@ -50,93 +53,53 @@ from dna.prodtrack_providers.prodtrack_provider_base import (
     UserNotFoundError,
 )
 
-FIELD_MAPPING = {
-    "project": {
-        "entity_id": "Project",
-        "fields": {"id": "id", "name": "name"},
-        "linked_fields": {},
-    },
-    "shot": {
-        "entity_id": "Shot",
-        "fields": {
-            "id": "id",
-            "code": "name",
-            "description": "description",
-            "project": "project",
-        },
-        "linked_fields": {"tasks": "tasks"},
-    },
-    "asset": {
-        "entity_id": "Asset",
-        "fields": {
-            "id": "id",
-            "code": "name",
-            "description": "description",
-            "project": "project",
-        },
-        "linked_fields": {"tasks": "tasks"},
-    },
-    "note": {
-        "entity_id": "Note",
-        "fields": {
-            "id": "id",
-            "subject": "subject",
-            "content": "content",
-            "project": "project",
-        },
-        "linked_fields": {"note_links": "note_links", "created_by": "author"},
-    },
-    "task": {
-        "entity_id": "Task",
-        "fields": {
-            "id": "id",
-            "sg_status_list": "status",
-            "step": "pipeline_step",
-            "content": "name",
-            "project": "project",
-        },
-        "linked_fields": {"entity": "entity"},
-    },
-    "version": {
-        "entity_id": "Version",
-        "fields": {
-            "id": "id",
-            "code": "name",
-            "description": "description",
-            "sg_status_list": "status",
-            "user": "user",
-            "created_at": "created_at",
-            "updated_at": "updated_at",
-            "sg_path_to_movie": "movie_path",
-            "sg_path_to_frames": "frame_path",
-            "project": "project",
-            "image": "thumbnail",
-        },
-        "linked_fields": {"entity": "entity", "sg_task": "task", "notes": "notes"},
-    },
-    "playlist": {
-        "entity_id": "Playlist",
-        "fields": {
-            "id": "id",
-            "code": "code",
-            "description": "description",
-            "project": "project",
-            "created_at": "created_at",
-            "updated_at": "updated_at",
-        },
-        "linked_fields": {"versions": "versions"},
-    },
-    "user": {
-        "entity_id": "HumanUser",
-        "fields": {
-            "id": "id",
-            "name": "name",
-            "email": "email",
-            "login": "login",
-        },
-        "linked_fields": {},
-    },
-}
+class _NoteAdapter(Section):
+    """ShotGrid Note field names that are not DNA fields."""
+
+    to_field: str = "addressings_to"
+    cc_field: str = "addressings_cc"
+    attachments_field: str = "attachments"
+    author_email_field: str = "created_by.HumanUser.email"
+    created_at_field: str = "created_at"
+
+
+class _TranscriptAdapter(Section):
+    """Fields of the custom entity that stores published transcripts."""
+
+    code: str = "code"
+    project: str = "project"
+    playlist: str = "sg_playlist"
+    version: str = "sg_version_in_review"
+    meeting_id: str = "sg_meeting_id"
+    meeting_date: str = "sg_meeting_date"
+    platform: str = "sg_platform"
+    body: str = "sg_transcript_body"
+
+
+class ShotgridAdapter(Section):
+    """The ``adapter`` block of the ShotGrid profile: names that only mean
+    something to the ShotGrid API.  Defaults are ShotGrid's standard schema."""
+
+    status_field: str = "sg_status_list"
+    project_members_field: str = "users"
+    note: _NoteAdapter = _NoteAdapter()
+    transcript: _TranscriptAdapter = _TranscriptAdapter()
+
+
+def _shotgrid_profile() -> ConnectorProfile:
+    """The ShotGrid profile in effect: the configured one when ShotGrid is the
+    active connector (so studio overrides apply), else the packaged default."""
+    cfg = get_config().get("prodtrack")
+    if cfg.connector == "shotgrid":
+        return load_profile(
+            "shotgrid", path=cfg.profile_path, overrides=cfg.profile
+        )
+    return load_profile("shotgrid")
+
+
+# The packaged default mapping, kept for code that imported it.  Providers use
+# their own (possibly studio-overridden) profile, not this constant.
+FIELD_MAPPING = load_profile("shotgrid").field_mapping()
 
 
 # ── ShotGrid fault translation ────────────────────────────────────────────────
@@ -150,15 +113,9 @@ FIELD_MAPPING = {
 # main.py registers a single exception handler that calls this and maps the
 # result onto a status code, so no call site has to wrap anything.
 
-_PERMISSION_FAULT_MARKERS = (
-    "permission",
-    "not authorized",
-    "unauthorized",
-    "access denied",
-    "does not have access",
-    "cannot be accessed",
-    "restricted",
-)
+# The markers live in the connector profile (``errors.permission_markers``) so a
+# studio on a localised or customised ShotGrid can extend them.
+_PERMISSION_FAULT_MARKERS = tuple(load_profile("shotgrid").errors.permission_markers)
 
 
 def classify_sg_fault(exc: Exception) -> Exception:
@@ -182,7 +139,8 @@ def classify_sg_fault(exc: Exception) -> Exception:
         )
 
     lowered = message.lower()
-    if any(marker in lowered for marker in _PERMISSION_FAULT_MARKERS):
+    markers = _shotgrid_profile().errors.permission_markers or _PERMISSION_FAULT_MARKERS
+    if any(marker.lower() in lowered for marker in markers):
         return ProdtrackPermissionError(
             "ShotGrid denied access to this resource for your account."
         )
@@ -193,6 +151,8 @@ def classify_sg_fault(exc: Exception) -> Exception:
 class ShotgridProvider(ProdtrackProviderBase):
     """ShotGrid provider for production tracking operations."""
 
+    SUPPORTS_IMPERSONATION = True
+
     def __init__(
         self,
         url: Optional[str] = None,
@@ -201,6 +161,7 @@ class ShotgridProvider(ProdtrackProviderBase):
         sudo_user: Optional[str] = None,
         connect: bool = True,
         session_id: Optional[str] = None,
+        profile: Optional[ConnectorProfile] = None,
     ):
         """Initialize the ShotGrid connection.
 
@@ -219,19 +180,26 @@ class ShotgridProvider(ProdtrackProviderBase):
                           Resolved server-side from the session store.
             connect:      Whether to connect immediately.
             session_id:   The user's DNA session ID. Diagnostics only.
+            profile:      Connector profile (field mappings, names, capabilities).
+                          Defaults to the configured ShotGrid profile.
         """
         super().__init__()
 
-        self.url: str = (url or os.getenv("SHOTGRID_URL") or "").rstrip("/")
+        self.profile: ConnectorProfile = profile or _shotgrid_profile()
+        self.mapper = ProfileMapper(self.profile)
+        self.adapter = ShotgridAdapter.model_validate(self.profile.adapter)
+
+        sg_cfg = get_config().get("prodtrack").shotgrid
+        self.url: str = (url or sg_cfg.url or "").rstrip("/")
         self._sudo_connection: Optional[Shotgun] = None
 
         if not self.url:
             raise ValueError("SHOTGRID_URL is required.")
 
         self.session_id = session_id
-        self.script_name = script_name or os.getenv("SHOTGRID_SCRIPT_NAME")
-        self.api_key = api_key or os.getenv("SHOTGRID_API_KEY")
-        self.sudo_user = sudo_user or os.getenv("SHOTGRID_SUDO_USER")
+        self.script_name = script_name or sg_cfg.script_name
+        self.api_key = api_key or sg_cfg.api_key
+        self.sudo_user = sudo_user or sg_cfg.sudo_user
 
         if not all([self.script_name, self.api_key]):
             raise ValueError(
@@ -302,27 +270,19 @@ class ShotgridProvider(ProdtrackProviderBase):
         entity_type: Optional[str] = None,
         resolve_links: bool = True,
     ) -> EntityBase:
+        resolve = (
+            self._resolve_linked_field if resolve_links else self._convert_shallow_link
+        )
         if entity_mapping is None:
-            entity_mapping = FIELD_MAPPING.get(entity_type)
-        if entity_mapping is None:
-            raise ValueError(f"No field mapping for entity type: {entity_type}")
-
-        linked_fields_map = entity_mapping.get("linked_fields", {})
-        entity_data: dict = {}
-
-        for sg_name, dna_name in entity_mapping["fields"].items():
-            entity_data[dna_name] = sg_entity.get(sg_name)
-
-        for sg_field_name, dna_field_name in linked_fields_map.items():
-            linked_data = sg_entity.get(sg_field_name)
-            entity_data[dna_field_name] = (
-                self._resolve_linked_field(linked_data)
-                if resolve_links
-                else self._convert_shallow_link(linked_data)
-            )
-
-        model_class = ENTITY_MODELS[entity_type]
-        return model_class(**entity_data)
+            entity_data = self.mapper.entity_data(entity_type, sg_entity, resolve)
+        else:  # an explicit legacy-shaped mapping dict
+            entity_data = {
+                dna: sg_entity.get(sg)
+                for sg, dna in entity_mapping["fields"].items()
+            }
+            for sg, dna in entity_mapping.get("linked_fields", {}).items():
+                entity_data[dna] = resolve(sg_entity.get(sg))
+        return ENTITY_MODELS[entity_type](**entity_data)
 
     def _convert_shallow_link(self, data):
         if data is None:
@@ -337,88 +297,45 @@ class ShotgridProvider(ProdtrackProviderBase):
         sg_type = sg_link.get("type")
         entity_id = sg_link.get("id")
         name = sg_link.get("name")
-        dna_type = _get_dna_entity_type(sg_type)
+        dna_type = self.mapper.kind_for_source(sg_type)
         model_class = ENTITY_MODELS[dna_type]
         if dna_type == "playlist":
             return model_class(id=entity_id, code=name)
         return model_class(id=entity_id, name=name)
 
-    def get_entity(
-        self, entity_type: str, entity_id: int, resolve_links: bool = True
-    ) -> EntityBase:
-        """
-        Get an entity by its ID.
-
-        Using the field mapping, we get the entity from ShotGrid and then
-        create the Pydantic entity object.
-
-        Args:
-            entity_type: The type of entity to fetch
-            entity_id: The ID of the entity
-            resolve_links: If True, recursively fetch linked entities.
-                If False, only include shallow links with id/name.
-        """
-        if not self._sg:
-            raise ValueError("Not connected to ShotGrid")
-
-        # Get the field mapping for this entity type
-        entity_mapping = FIELD_MAPPING.get(entity_type)
-        if entity_mapping is None:
-            raise ValueError(f"Unknown entity type: {entity_type}")
-
-        # Compose all field names from fields and linked fields
-        fields = list(entity_mapping["fields"].keys())
-        linked_fields_map = entity_mapping.get("linked_fields", {})
-        linked_field_sg_names = list(linked_fields_map.keys())
-        all_field_names = list(set(fields + linked_field_sg_names))
-
-        # Query entity from ShotGrid
-        sg_entity = self._sg.find_one(
-            entity_mapping["entity_id"],
-            filters=[["id", "is", entity_id]],
-            fields=all_field_names,
-        )
-
-        if not sg_entity:
-            raise ValueError(f"Entity not found: {entity_type} {entity_id}")
-
-        entity = self._convert_sg_entity_to_dna_entity(
-            sg_entity, entity_mapping, entity_type, resolve_links=resolve_links
-        )
-        if entity_type == "version":
-            version = cast(Version, entity)
-            base = (self.url or "").rstrip("/")
-            if base:
-                version.prodtrack_detail_url = f"{base}/detail/Version/{version.id}"
-                if version.entity:
-                    version.prodtrack_entity_detail_url = (
-                        f"{base}/detail/{version.entity.type}/{version.entity.id}"
-                    )
-        return entity
-
     def _resolve_linked_field(self, data):
         if isinstance(data, dict):
-            dna_type = _get_dna_entity_type(data["type"])
+            dna_type = self.mapper.kind_for_source(data["type"])
             return self.get_entity(dna_type, data["id"], resolve_links=False)
         elif isinstance(data, list):
             return [
                 self.get_entity(
-                    _get_dna_entity_type(item["type"]), item["id"], resolve_links=False
+                    self.mapper.kind_for_source(item["type"]),
+                    item["id"],
+                    resolve_links=False,
                 )
                 for item in data
             ]
         return None
 
+    def _sg_type_of(self, entity: EntityBase) -> str:
+        """ShotGrid entity type for a DNA entity (its class name if unbound)."""
+        kind = self.mapper.kind_of(entity)
+        return self.mapper.source(kind) if self.mapper.has(kind) else kind.capitalize()
+
     def _convert_entities_to_sg_links(self, entities):
         if isinstance(entities, EntityBase):
-            return {"type": entities.__class__.__name__, "id": entities.id}
+            return {"type": self._sg_type_of(entities), "id": entities.id}
         elif isinstance(entities, list):
             return [
-                {"type": e.__class__.__name__, "id": e.id}
+                {"type": self._sg_type_of(e), "id": e.id}
                 for e in entities
                 if isinstance(e, EntityBase)
             ]
         return None
+
+    def _project_link(self, project_id: int) -> dict:
+        return {"type": self.mapper.source("project"), "id": project_id}
 
     # ── CRUD ──────────────────────────────────────────────────────────── #
 
@@ -427,38 +344,29 @@ class ShotgridProvider(ProdtrackProviderBase):
     ) -> EntityBase:
         if not self._sg:
             raise ValueError("Not connected to ShotGrid")
-        entity_mapping = FIELD_MAPPING.get(entity_type)
-        if entity_mapping is None:
-            raise ValueError(f"Unknown entity type: {entity_type}")
-        fields = list(entity_mapping["fields"].keys())
-        linked_field_sg_names = list(entity_mapping.get("linked_fields", {}).keys())
-        all_fields = list(set(fields + linked_field_sg_names))
+        binding = self.mapper.binding(entity_type)
         sg_entity = self._sg.find_one(
-            entity_mapping["entity_id"],
+            binding.source,
             filters=[["id", "is", entity_id]],
-            fields=all_fields,
+            fields=list(set(self.mapper.read_fields(entity_type))),
         )
         if not sg_entity:
             raise ValueError(f"Entity not found: {entity_type} {entity_id}")
         return self._convert_sg_entity_to_dna_entity(
-            sg_entity, entity_mapping, entity_type, resolve_links=resolve_links
+            sg_entity, None, entity_type, resolve_links=resolve_links
         )
 
     def add_entity(self, entity_type: str, entity: EntityBase) -> EntityBase:
-        entity_mapping = FIELD_MAPPING.get(entity_type)
-        if entity_mapping is None:
-            raise ValueError(f"Unknown entity type: {entity_type}")
+        binding = self.mapper.binding(entity_type)
         sg_entity_data = {}
-        for sg_field_name, dna_field_name in entity_mapping["fields"].items():
+        for sg_field_name, dna_field_name in binding.fields.items():
             if sg_field_name == "id":
                 continue
             value = entity.model_dump().get(dna_field_name)
             if value is not None:
                 sg_entity_data[sg_field_name] = value
         linked_fields_to_preserve = {}
-        for sg_field_name, dna_field_name in entity_mapping.get(
-            "linked_fields", {}
-        ).items():
+        for sg_field_name, dna_field_name in binding.links.items():
             linked_entities = getattr(entity, dna_field_name, None)
             if linked_entities is None:
                 continue
@@ -466,9 +374,9 @@ class ShotgridProvider(ProdtrackProviderBase):
             sg_linked = self._convert_entities_to_sg_links(linked_entities)
             if sg_linked:
                 sg_entity_data[sg_field_name] = sg_linked
-        result = self._sg.create(entity_mapping["entity_id"], sg_entity_data)
+        result = self._sg.create(binding.source, sg_entity_data)
         created_entity = self._convert_sg_entity_to_dna_entity(
-            result, entity_mapping, entity_type, resolve_links=False
+            result, None, entity_type, resolve_links=False
         )
         for dna_field_name, linked_entities in linked_fields_to_preserve.items():
             setattr(created_entity, dna_field_name, linked_entities)
@@ -479,32 +387,18 @@ class ShotgridProvider(ProdtrackProviderBase):
     ) -> list[EntityBase]:
         if not self._sg:
             raise ValueError("Not connected to ShotGrid")
-        entity_mapping = FIELD_MAPPING.get(entity_type)
-        if entity_mapping is None:
-            raise ValueError(f"Unsupported entity type: {entity_type}")
-        dna_to_sg = {v: k for k, v in entity_mapping["fields"].items()}
-        dna_to_sg.update(
-            {v: k for k, v in entity_mapping.get("linked_fields", {}).items()}
+        binding = self.mapper.binding(
+            entity_type, message="Unsupported entity type: {kind}"
         )
-        sg_filters = []
-        for f in filters:
-            sg_field = dna_to_sg.get(f.get("field"))
-            if sg_field is None:
-                raise ValueError(
-                    f"Unknown field '{f.get('field')}' for '{entity_type}'"
-                )
-            sg_filters.append([sg_field, f.get("operator"), f.get("value")])
-        sg_fields = list(entity_mapping["fields"].keys()) + list(
-            entity_mapping.get("linked_fields", {}).keys()
-        )
+        sg_filters = self.mapper.to_tracker_filters(entity_type, filters)
         sg_results = self._sg.find(
-            entity_mapping["entity_id"],
+            binding.source,
             filters=sg_filters,
-            fields=sg_fields,
+            fields=self.mapper.read_fields(entity_type),
             limit=limit,
         )
         return [
-            self._convert_sg_entity_to_dna_entity(r, entity_mapping, entity_type)
+            self._convert_sg_entity_to_dna_entity(r, None, entity_type)
             for r in sg_results
         ]
 
@@ -519,34 +413,37 @@ class ShotgridProvider(ProdtrackProviderBase):
             raise ValueError("Not connected to ShotGrid")
         results = []
         for entity_type in entity_types:
-            entity_mapping = FIELD_MAPPING.get(entity_type)
-            if entity_mapping is None:
-                raise ValueError(f"Unsupported entity type: {entity_type}")
-            sg_entity_type = entity_mapping["entity_id"]
-            fields_mapping = entity_mapping["fields"]
-            name_sg_field = next(
-                (sg for sg, dna in fields_mapping.items() if dna == "name"), None
+            binding = self.mapper.binding(
+                entity_type, message="Unsupported entity type: {kind}"
             )
+            name_sg_field = self.mapper.tracker_field_or_none(entity_type, "name")
             if name_sg_field is None:
                 continue
             sg_fields = ["id", name_sg_field]
+            email_field = self.mapper.tracker_field_or_none(entity_type, "email")
+            desc_field = self.mapper.tracker_field_or_none(entity_type, "description")
+            project_field = self.mapper.tracker_field_or_none(entity_type, "project")
             if entity_type == "user":
-                sg_fields.append("email")
+                sg_fields.append(email_field or "email")
             else:
-                if "description" in fields_mapping:
-                    sg_fields.append("description")
-                if "project" in fields_mapping:
-                    sg_fields.append("project")
+                if desc_field:
+                    sg_fields.append(desc_field)
+                if project_field:
+                    sg_fields.append(project_field)
             q = (query or "").strip()
             sg_filters: list = []
             if q:
                 sg_filters.append([name_sg_field, "contains", q])
             if entity_type != "user" and project_id is not None:
                 sg_filters.append(
-                    ["project", "is", {"type": "Project", "id": project_id}]
+                    [
+                        project_field or "project",
+                        "is",
+                        self._project_link(project_id),
+                    ]
                 )
             sg_results = self._sg.find(
-                sg_entity_type, filters=sg_filters, fields=sg_fields, limit=limit
+                binding.source, filters=sg_filters, fields=sg_fields, limit=limit
             )
             model_class = ENTITY_MODELS.get(entity_type)
             dna_type = model_class.__name__ if model_class else entity_type.capitalize()
@@ -557,11 +454,13 @@ class ShotgridProvider(ProdtrackProviderBase):
                     "name": sg_entity.get(name_sg_field),
                 }
                 if entity_type == "user":
-                    result["email"] = sg_entity.get("email")
+                    result["email"] = sg_entity.get(email_field or "email")
                 else:
-                    if "description" in sg_entity:
-                        result["description"] = sg_entity.get("description")
-                    project_data = sg_entity.get("project")
+                    if (desc_field or "description") in sg_entity:
+                        result["description"] = sg_entity.get(
+                            desc_field or "description"
+                        )
+                    project_data = sg_entity.get(project_field or "project")
                     if project_data:
                         result["project"] = {
                             "type": project_data.get("type"),
@@ -574,34 +473,40 @@ class ShotgridProvider(ProdtrackProviderBase):
         if not self._sg:
             raise ValueError("Not connected to ShotGrid")
         sg_user = self._sg.find_one(
-            "HumanUser",
-            filters=[["email", "is", user_email]],
-            fields=["id", "name", "email", "login"],
+            self.mapper.source("user"),
+            filters=[[self.mapper.tracker_field("user", "email"), "is", user_email]],
+            fields=self.mapper.read_fields("user"),
         )
         if not sg_user:
             raise ValueError(f"User not found: {user_email}")
         return self._convert_sg_entity_to_dna_entity(
-            sg_user, FIELD_MAPPING["user"], "user", resolve_links=False
+            sg_user, None, "user", resolve_links=False
         )
 
     def get_projects_for_user(self, user_email: str) -> list[Project]:
         if not self._sg:
             raise ValueError("Not connected to ShotGrid")
+        m = self.mapper
+        email_field = m.tracker_field("user", "email")
         user = self._sg.find_one(
-            "HumanUser",
-            filters=[["email", "is", user_email]],
-            fields=["id", "email", "name"],
+            m.source("user"),
+            filters=[[email_field, "is", user_email]],
+            fields=[
+                m.tracker_field("user", "id"),
+                email_field,
+                m.tracker_field("user", "name"),
+            ],
         )
         if not user:
             raise ValueError(f"User not found: {user_email}")
         sg_projects = self._sg.find(
-            "Project",
-            filters=[["users", "is", user]],
-            fields=["id", "name"],
+            m.source("project"),
+            filters=[[self.adapter.project_members_field, "is", user]],
+            fields=m.read_fields("project"),
         )
         return [
             self._convert_sg_entity_to_dna_entity(
-                p, FIELD_MAPPING["project"], "project", resolve_links=False
+                p, None, "project", resolve_links=False
             )
             for p in sg_projects
         ]
@@ -609,14 +514,21 @@ class ShotgridProvider(ProdtrackProviderBase):
     def get_playlists_for_project(self, project_id: int) -> list[Playlist]:
         if not self._sg:
             raise ValueError("Not connected to ShotGrid")
+        m = self.mapper
         sg_playlists = self._sg.find(
-            "Playlist",
-            filters=[["project", "is", {"type": "Project", "id": project_id}]],
-            fields=["id", "code", "description", "project", "created_at", "updated_at"],
+            m.source("playlist"),
+            filters=[
+                [
+                    m.tracker_field("playlist", "project"),
+                    "is",
+                    self._project_link(project_id),
+                ]
+            ],
+            fields=list(m.binding("playlist").fields),
         )
         return [
             self._convert_sg_entity_to_dna_entity(
-                p, FIELD_MAPPING["playlist"], "playlist", resolve_links=False
+                p, None, "playlist", resolve_links=False
             )
             for p in sg_playlists
         ]
@@ -633,86 +545,88 @@ class ShotgridProvider(ProdtrackProviderBase):
         """
         if not self._sg:
             raise ValueError("Not connected to ShotGrid")
-
+        m = self.mapper
         sg_playlist = self._sg.create(
-            "Playlist",
+            m.source("playlist"),
             {
-                "code": name,
-                "project": {"type": "Project", "id": project_id},
+                m.tracker_field("playlist", "code"): name,
+                m.tracker_field("playlist", "project"): self._project_link(project_id),
             },
         )
-
-        entity_mapping = FIELD_MAPPING["playlist"]
         return self._convert_sg_entity_to_dna_entity(
-            sg_playlist, entity_mapping, "playlist", resolve_links=False
+            sg_playlist, None, "playlist", resolve_links=False
         )
 
     def get_versions_for_playlist(self, playlist_id: int) -> list[Version]:
         if not self._sg:
             raise ValueError("Not connected to ShotGrid")
+        m = self.mapper
+        versions_field = m.tracker_field("playlist", "versions")
         sg_playlist = self._sg.find_one(
-            "Playlist", filters=[["id", "is", playlist_id]], fields=["versions"]
+            m.source("playlist"),
+            filters=[["id", "is", playlist_id]],
+            fields=[versions_field],
         )
-        if not sg_playlist or not sg_playlist.get("versions"):
+        if not sg_playlist or not sg_playlist.get(versions_field):
             return []
-        version_ids = [v["id"] for v in sg_playlist["versions"]]
-        entity_mapping = FIELD_MAPPING["version"]
-        version_fields = list(entity_mapping["fields"].keys()) + list(
-            entity_mapping["linked_fields"].keys()
-        )
+        version_ids = [v["id"] for v in sg_playlist[versions_field]]
         sg_versions = self._sg.find(
-            "Version",
+            m.source("version"),
             filters=[["id", "in", version_ids]],
-            fields=version_fields,
+            fields=m.read_fields("version"),
         )
+        task_field = m.tracker_field("version", "task")
         task_ids = list(
             {
-                v["sg_task"]["id"]
+                v[task_field]["id"]
                 for v in sg_versions
-                if v.get("sg_task") and v["sg_task"].get("id")
+                if v.get(task_field) and v[task_field].get("id")
             }
         )
         tasks_by_id: dict[int, dict] = {}
         if task_ids:
-            task_fields = list(FIELD_MAPPING["task"]["fields"].keys())
+            task_fields = list(m.binding("task").fields)
             for sg_task in self._sg.find(
-                "Task", filters=[["id", "in", task_ids]], fields=task_fields
+                m.source("task"), filters=[["id", "in", task_ids]], fields=task_fields
             ):
                 tasks_by_id[sg_task["id"]] = sg_task
 
+        note_links_field = m.tracker_field("note", "note_links")
+        author_field = m.tracker_field("note", "author")
+        author_email_field = self.adapter.note.author_email_field
         sg_notes = self._sg.find(
-            "Note",
-            filters=[["note_links", "is", {"type": "Playlist", "id": playlist_id}]],
+            m.source("note"),
+            filters=[[note_links_field, "is", {"type": m.source("playlist"), "id": playlist_id}]],
             fields=[
-                "id",
-                "subject",
-                "content",
-                "note_links",
-                "created_by",
-                "created_by.HumanUser.email",
-                "created_at",
+                m.tracker_field("note", "id"),
+                m.tracker_field("note", "subject"),
+                m.tracker_field("note", "content"),
+                note_links_field,
+                author_field,
+                author_email_field,
+                self.adapter.note.created_at_field,
             ],
         )
         notes_by_version_id: dict[int, list] = {}
-        note_mapping = FIELD_MAPPING["note"]
+        version_source = m.source("version")
         for sg_note in sg_notes:
             dna_note = self._convert_sg_entity_to_dna_entity(
-                sg_note, note_mapping, "note", resolve_links=False
+                sg_note, None, "note", resolve_links=False
             )
             if (
-                sg_note.get("created_by")
-                and sg_note["created_by"].get("type") == "HumanUser"
+                sg_note.get(author_field)
+                and sg_note[author_field].get("type") == m.source("user")
             ):
-                email = sg_note.get("created_by.HumanUser.email")
+                email = sg_note.get(author_email_field)
                 if email and dna_note.author:
                     dna_note.author.email = email
-            links = sg_note.get("note_links", [])
+            links = sg_note.get(note_links_field, [])
             linked_vids = (
-                [l["id"] for l in links if l["type"] == "Version"]
+                [l["id"] for l in links if l["type"] == version_source]
                 if isinstance(links, list)
                 else (
                     [links["id"]]
-                    if isinstance(links, dict) and links["type"] == "Version"
+                    if isinstance(links, dict) and links["type"] == version_source
                     else []
                 )
             )
@@ -723,27 +637,27 @@ class ShotgridProvider(ProdtrackProviderBase):
         versions = []
         for sg_version in sg_versions:
             version = self._convert_sg_entity_to_dna_entity(
-                sg_version, entity_mapping, "version", resolve_links=False
+                sg_version, None, "version", resolve_links=False
             )
-            if sg_version.get("sg_task") and sg_version["sg_task"].get("id"):
-                task_id = sg_version["sg_task"]["id"]
+            if sg_version.get(task_field) and sg_version[task_field].get("id"):
+                task_id = sg_version[task_field]["id"]
                 if task_id in tasks_by_id:
                     version.task = self._convert_sg_entity_to_dna_entity(
-                        tasks_by_id[task_id],
-                        FIELD_MAPPING["task"],
-                        "task",
-                        resolve_links=False,
+                        tasks_by_id[task_id], None, "task", resolve_links=False
                     )
             if version.id in notes_by_version_id:
                 version.notes = notes_by_version_id[version.id]
 
-            base = (self.url or "").rstrip("/")
-            if base:
-                version.prodtrack_detail_url = f"{base}/detail/Version/{version.id}"
-                if version.entity:
-                    version.prodtrack_entity_detail_url = (
-                        f"{base}/detail/{version.entity.type}/{version.entity.id}"
-                    )
+            version.prodtrack_detail_url = m.url(
+                "version_detail", base=self.url, kind="version", entity_id=version.id
+            )
+            if version.entity and m.has(m.kind_of(version.entity)):
+                version.prodtrack_entity_detail_url = m.url(
+                    "entity_detail",
+                    base=self.url,
+                    kind=m.kind_of(version.entity),
+                    entity_id=version.entity.id,
+                )
 
             versions.append(version)
         return versions
@@ -760,21 +674,22 @@ class ShotgridProvider(ProdtrackProviderBase):
         """
         if not self._sg:
             raise ValueError("Not connected to ShotGrid")
-
+        m = self.mapper
+        versions_field = m.tracker_field("playlist", "versions")
         sg_playlist = self._sg.find_one(
-            "Playlist",
+            m.source("playlist"),
             filters=[["id", "is", playlist_id]],
-            fields=["versions"],
+            fields=[versions_field],
         )
         if not sg_playlist:
             raise ValueError(f"Playlist {playlist_id} not found")
 
-        versions = sg_playlist.get("versions") or []
+        versions = sg_playlist.get(versions_field) or []
         if any(v.get("id") == version_id for v in versions):
             return True
 
-        versions.append({"type": "Version", "id": version_id})
-        self._sg.update("Playlist", playlist_id, {"versions": versions})
+        versions.append({"type": m.source("version"), "id": version_id})
+        self._sg.update(m.source("playlist"), playlist_id, {versions_field: versions})
         return True
 
     def get_version_statuses(
@@ -782,11 +697,14 @@ class ShotgridProvider(ProdtrackProviderBase):
     ) -> list[dict[str, str]]:
         if not self.sg:
             raise ValueError("Not connected to ShotGrid")
-        project_entity = {"type": "Project", "id": project_id} if project_id else None
-        schema = self._sg.schema_field_read("Version", "sg_status_list", project_entity)
-        if not schema or "sg_status_list" not in schema:
+        project_entity = self._project_link(project_id) if project_id else None
+        status_field = self.adapter.status_field
+        schema = self._sg.schema_field_read(
+            self.mapper.source("version"), status_field, project_entity
+        )
+        if not schema or status_field not in schema:
             return []
-        props = schema["sg_status_list"].get("properties", {})
+        props = schema[status_field].get("properties", {})
         valid_values = props.get("valid_values", {}).get("value", [])
         display_values = props.get("display_values", {}).get("value", {})
         return [{"code": c, "name": display_values.get(c, c)} for c in valid_values]
@@ -795,7 +713,11 @@ class ShotgridProvider(ProdtrackProviderBase):
         if not self._sg:
             return False
         try:
-            self._sg.update("Version", version_id, {"sg_status_list": status})
+            self._sg.update(
+                self.mapper.source("version"),
+                version_id,
+                {self.adapter.status_field: status},
+            )
             return True
         except Exception:
             return False
@@ -810,14 +732,17 @@ class ShotgridProvider(ProdtrackProviderBase):
     ) -> bool:
         if not self._sg:
             return False
-        data = {"content": content}
+        m = self.mapper
+        data = {m.tracker_field("note", "content"): content}
         if subject:
-            data["subject"] = subject
+            data[m.tracker_field("note", "subject")] = subject
         try:
-            self._sg.update("Note", note_id, data)
+            self._sg.update(m.source("note"), note_id, data)
             if version_status and version_id:
                 self._sg.update(
-                    "Version", version_id, {"sg_status_list": version_status}
+                    m.source("version"),
+                    version_id,
+                    {self.adapter.status_field: version_status},
                 )
             return True
         except Exception as e:
@@ -837,34 +762,44 @@ class ShotgridProvider(ProdtrackProviderBase):
     ) -> int:
         if not self._sg:
             raise ValueError("Not connected to ShotGrid")
+        m = self.mapper
+        version_source = m.source("version")
+        status_field = self.adapter.status_field
+        version_project_field = m.tracker_field("version", "project")
         version_data = self._sg.find_one(
-            "Version", filters=[["id", "is", version_id]], fields=["project"]
+            version_source,
+            filters=[["id", "is", version_id]],
+            fields=[version_project_field],
         )
         if not version_data:
             raise ValueError(f"Version {version_id} not found")
-        project = version_data.get("project")
+        project = version_data.get(version_project_field)
         if not project:
             raise ValueError(f"Version {version_id} has no project assigned")
 
+        project_field = m.tracker_field("note", "project")
+        subject_field = m.tracker_field("note", "subject")
+        content_field = m.tracker_field("note", "content")
+        links_field = m.tracker_field("note", "note_links")
+        version_link = {"type": version_source, "id": version_id}
+
         # Duplicate check
         existing = self._sg.find_one(
-            "Note",
+            m.source("note"),
             filters=[
-                ["project", "is", project],
-                ["note_links", "is", {"type": "Version", "id": version_id}],
-                ["subject", "is", subject],
-                ["content", "is", content],
+                [project_field, "is", project],
+                [links_field, "is", version_link],
+                [subject_field, "is", subject],
+                [content_field, "is", content],
             ],
-            fields=["id"],
+            fields=[m.tracker_field("note", "id")],
         )
         if existing:
             if version_status:
-                self._sg.update(
-                    "Version", version_id, {"sg_status_list": version_status}
-                )
+                self._sg.update(version_source, version_id, {status_field: version_status})
             return existing["id"]
 
-        note_links = [{"type": "Version", "id": version_id}]
+        note_links = [version_link]
         if links:
             extra = self._convert_entities_to_sg_links(links)
             if isinstance(extra, dict):
@@ -872,13 +807,18 @@ class ShotgridProvider(ProdtrackProviderBase):
             elif isinstance(extra, list):
                 note_links.extend(extra)
 
+        user_source = m.source("user")
         note_data = {
-            "project": project,
-            "subject": subject,
-            "content": content,
-            "note_links": note_links,
-            "addressings_to": [{"type": "HumanUser", "id": uid} for uid in to_users],
-            "addressings_cc": [{"type": "HumanUser", "id": uid} for uid in cc_users],
+            project_field: project,
+            subject_field: subject,
+            content_field: content,
+            links_field: note_links,
+            self.adapter.note.to_field: [
+                {"type": user_source, "id": uid} for uid in to_users
+            ],
+            self.adapter.note.cc_field: [
+                {"type": user_source, "id": uid} for uid in cc_users
+            ],
         }
 
         # Attribute the note to its actual author, which is not necessarily the
@@ -898,12 +838,12 @@ class ShotgridProvider(ProdtrackProviderBase):
                 ) from e
         if author_login:
             with self.sudo(author_login):
-                result = self._sg.create("Note", note_data)
+                result = self._sg.create(m.source("note"), note_data)
         else:
-            result = self._sg.create("Note", note_data)
+            result = self._sg.create(m.source("note"), note_data)
 
         if version_status:
-            self._sg.update("Version", version_id, {"sg_status_list": version_status})
+            self._sg.update(version_source, version_id, {status_field: version_status})
         return result["id"]
 
     def attach_file_to_note(
@@ -913,15 +853,107 @@ class ShotgridProvider(ProdtrackProviderBase):
             return False
         try:
             self._sg.upload(
-                "Note",
+                self.mapper.source("note"),
                 note_id,
                 file_path,
-                field_name="attachments",
+                field_name=self.adapter.note.attachments_field,
                 display_name=display_name,
             )
             return True
         except Exception:
             return False
+
+    def transcript_entity_type(self, project_id: Any = None) -> str:
+        return _transcript_entity_type(project_id)
+
+    # ── handshake ─────────────────────────────────────────────────────── #
+
+    @classmethod
+    def for_handshake(cls, prodtrack_config: Any, profile: ConnectorProfile) -> "ShotgridProvider":
+        sg = prodtrack_config.shotgrid
+        return cls(
+            url=sg.url,
+            script_name=sg.script_name,
+            api_key=sg.api_key,
+            sudo_user=sg.sudo_user,
+            profile=profile,
+        )
+
+    def check_connection(self) -> dict[str, Any]:
+        if not self.sg:
+            raise ValueError("Not connected to ShotGrid")
+        # A real query proves the script name and key, which info() alone does not.
+        self.sg.find_one(self.mapper.source("user"), [], ["id"])
+        info: dict[str, Any] = {"site": self.url}
+        try:
+            version = self.sg.info().get("version")
+            if version:
+                info["server_version"] = ".".join(str(v) for v in version)
+        except Exception:  # info() is advisory
+            pass
+        return info
+
+    def discover_schema(self) -> "TrackerSchema":
+        from dna.prodtrack_providers.handshake import TrackerSchema
+
+        if not self.sg:
+            raise ValueError("Not connected to ShotGrid")
+        known = set(self.sg.schema_entity_read())
+        sources = {b.source for b in self.profile.entities.values()}
+        sources.add(self.transcript_entity_type())
+        entities = {
+            source: set(self.sg.schema_field_read(source))
+            for source in sorted(sources)
+            if source in known
+        }
+        try:
+            statuses = [s["code"] for s in self.get_version_statuses()]
+        except Exception:
+            statuses = []
+        return TrackerSchema(
+            version="ShotGrid", entities=entities, known_entities=known, statuses=statuses
+        )
+
+    def adapter_issues(self, schema: "TrackerSchema") -> "list[Check]":
+        from dna.prodtrack_providers.handshake import Check
+
+        checks: list[Check] = []
+        version_source = self.mapper.source("version")
+        version_fields = schema.entities.get(version_source)
+        if version_fields is not None:
+            ok = self.adapter.status_field in version_fields
+            checks.append(Check(
+                "adapter.status_field",
+                "ok" if ok else "fail",
+                f"status field '{self.adapter.status_field}' "
+                + ("exists on " if ok else "is missing from ") + version_source,
+            ))
+        note_source = self.mapper.source("note")
+        note_fields = schema.entities.get(note_source)
+        if note_fields is not None:
+            wanted = [self.adapter.note.to_field, self.adapter.note.cc_field, self.adapter.note.attachments_field]
+            missing = [f for f in wanted if f not in note_fields]
+            checks.append(Check(
+                "adapter.note",
+                "fail" if missing else "ok",
+                f"note fields missing from {note_source}: {missing}" if missing else f"note recipient and attachment fields exist on {note_source}",
+            ))
+        transcript_entity = self.transcript_entity_type()
+        if schema.known_entities and transcript_entity not in schema.known_entities:
+            checks.append(Check(
+                "adapter.transcript", "warn",
+                f"transcript entity '{transcript_entity}' does not exist; transcript publishing will fail until it is enabled",
+            ))
+        elif transcript_entity in schema.entities:
+            fields = schema.entities[transcript_entity]
+            t = self.adapter.transcript
+            missing = [f for f in (t.code, t.project, t.playlist, t.version, t.meeting_id, t.meeting_date, t.platform, t.body) if f not in fields]
+            checks.append(Check(
+                "adapter.transcript",
+                "warn" if missing else "ok",
+                f"{transcript_entity} lacks fields {missing}" if missing else f"{transcript_entity} has every transcript field",
+            ))
+        return checks
 
     def publish_transcript(
         self,
@@ -938,18 +970,20 @@ class ShotgridProvider(ProdtrackProviderBase):
         if not self._sg:
             raise ValueError("Not connected to ShotGrid")
 
-        entity_type = _transcript_entity_type()
+        entity_type = _transcript_entity_type(project_id)
+        f = self.adapter.transcript
+        m = self.mapper
         # Human-readable code so the row is identifiable on the SG entity page.
         code = f"transcript-{version_id}-{meeting_date.isoformat()}"
         payload: dict[str, Any] = {
-            "code": code,
-            "project": {"type": "Project", "id": project_id},
-            "sg_playlist": {"type": "Playlist", "id": playlist_id},
-            "sg_version_in_review": {"type": "Version", "id": version_id},
-            "sg_meeting_id": meeting_id,
-            "sg_meeting_date": meeting_date.isoformat(),
-            "sg_platform": platform,
-            "sg_transcript_body": body,
+            f.code: code,
+            f.project: self._project_link(project_id),
+            f.playlist: {"type": m.source("playlist"), "id": playlist_id},
+            f.version: {"type": m.source("version"), "id": version_id},
+            f.meeting_id: meeting_id,
+            f.meeting_date: meeting_date.isoformat(),
+            f.platform: platform,
+            f.body: body,
         }
         result = self._sg.create(entity_type, payload)
         return result["id"]
@@ -965,19 +999,19 @@ class ShotgridProvider(ProdtrackProviderBase):
         """Patch body + date on an existing transcript; other fields untouched."""
         if not self._sg:
             return False
+        f = self.adapter.transcript
         try:
             self._sg.update(
                 entity_type,
                 entity_id,
                 {
-                    "sg_transcript_body": body,
-                    "sg_meeting_date": meeting_date.isoformat(),
+                    f.body: body,
+                    f.meeting_date: meeting_date.isoformat(),
                 },
             )
             return True
         except Exception:
             return False
-
 
 def _get_dna_entity_type(sg_entity_type: str) -> str:
     for entity_type, entity_data in FIELD_MAPPING.items():
@@ -986,6 +1020,15 @@ def _get_dna_entity_type(sg_entity_type: str) -> str:
     raise ValueError(f"Unknown entity type: {sg_entity_type}")
 
 
-def _transcript_entity_type() -> str:
-    """Site-specific custom-entity slot, switchable per deployment via env."""
-    return os.getenv("SHOTGRID_TRANSCRIPT_ENTITY", "CustomEntity01")
+def _transcript_entity_type(project_id: Optional[int] = None) -> str:
+    """Custom-entity slot that stores transcripts.
+
+    Set site-wide (``SHOTGRID_TRANSCRIPT_ENTITY``) and optionally overridden per
+    project, since studios enable a different slot per ShotGrid project.
+    """
+    cfg = get_config()
+    if project_id is not None:
+        return cfg.get_for_project(
+            "prodtrack", str(project_id)
+        ).shotgrid.transcript_entity
+    return cfg.get("prodtrack").shotgrid.transcript_entity

@@ -12,6 +12,7 @@ import {
     ArchiveIcon
 } from '@radix-ui/react-icons';
 import { styled } from 'styled-components';
+import type { EntityId } from '@dna/core';
 
 export type EntityType =
     | "user"
@@ -25,7 +26,7 @@ export type EntityType =
 
 export interface EntityPillEntity {
     type: EntityType;
-    id: number;
+    id: EntityId;
     name: string;
 }
 

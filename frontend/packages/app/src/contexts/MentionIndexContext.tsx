@@ -5,6 +5,7 @@ import {
   MENTION_PREFETCH_ENTITY_TYPES,
   MENTION_PREFETCH_LIMIT,
   mergeMentionPrefetchResults,
+  type EntityId,
 } from '@dna/core';
 import { apiHandler } from '../api';
 
@@ -12,7 +13,7 @@ const REFRESH_MS = 5 * 60 * 1000;
 
 export interface MentionIndexContextValue {
   /** Project this index was built for (null when prefetch disabled). */
-  projectId: number | null;
+  projectId: EntityId | null;
   mergedCandidates: SearchResult[];
   isIndexLoading: boolean;
   isIndexFetching: boolean;
@@ -27,7 +28,7 @@ export function MentionIndexProvider({
   projectId,
   children,
 }: {
-  projectId: number | null;
+  projectId: EntityId | null;
   children: ReactNode;
 }) {
   const pid = projectId;

@@ -1,4 +1,9 @@
-import type { SearchResult, SearchableEntityType } from './interfaces';
+import type {
+  EntityId,
+  SearchResult,
+  SearchableEntityType,
+} from './interfaces';
+import { parseEntityId } from './utils';
 
 /** Entity types prefetched in parallel for @ mentions (order preserved in merge). */
 export const MENTION_PREFETCH_ENTITY_TYPES = [
@@ -24,6 +29,21 @@ export function normalizeEntitySearchQuery(query: string): string {
 
 export function mentionResultKey(result: SearchResult): string {
   return `${result.type.toLowerCase()}:${result.id}`;
+}
+
+/**
+ * Split a {@link mentionResultKey} back into its type and id.
+ *
+ * Splits on the FIRST colon only: an AYON id is itself ``"<project>:<uuid>"``, so
+ * ``"shot:demo:5fd4..."`` is type ``shot`` and id ``"demo:5fd4..."``.
+ */
+export function parseMentionKey(
+  key: string
+): { type: string; id: EntityId } | null {
+  const separator = key.indexOf(':');
+  if (separator <= 0) return null;
+  const id = parseEntityId(key.slice(separator + 1));
+  return id === null ? null : { type: key.slice(0, separator), id };
 }
 
 /**

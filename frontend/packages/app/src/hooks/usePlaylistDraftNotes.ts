@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { DraftNote } from '@dna/core';
+import { DraftNote, type EntityId } from '@dna/core';
 import { apiHandler } from '../api';
 
 export function usePlaylistDraftNotes(
-    playlistId?: number | null
+    playlistId?: EntityId | null
 ) {
     const isEnabled = playlistId != null;
 

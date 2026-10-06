@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+from dna.models.ids import EntityId
 
 
 class StoredSegmentCreate(BaseModel):
@@ -50,8 +51,8 @@ class StoredSegment(BaseModel):
 
     id: str = Field(alias="_id")
     segment_id: str
-    playlist_id: int
-    version_id: int
+    playlist_id: EntityId
+    version_id: EntityId
     text: str
     speaker: Optional[str] = None
     language: Optional[str] = None

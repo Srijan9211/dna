@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { StatusOption } from '@dna/core';
+import { StatusOption, type EntityId } from '@dna/core';
 import { apiHandler } from '../api';
 
 export interface UseVersionStatusesParams {
-  projectId?: number;
+  projectId?: EntityId;
 }
 
 export interface UseVersionStatusesResult {

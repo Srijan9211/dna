@@ -33,12 +33,14 @@ Environment variables
 
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import dataclass, field
 from typing import Optional
 
 import requests
+
+from dna.auth.errors import AuthBackendUnavailable
+from dna.configsys import get_config
 
 # Upper bound on a single call to the ShotGrid token endpoint.  A login blocks
 # on this, so it must fail fast enough to show the user a clear error.
@@ -63,7 +65,7 @@ class ShotGridAuthRejected(ValueError):
     """ShotGrid refused the credentials or token. Definitive: log in again."""
 
 
-class ShotGridUnavailable(ValueError):
+class ShotGridUnavailable(AuthBackendUnavailable):
     """ShotGrid could not be reached or failed to answer. Transient: retry."""
 
 
@@ -98,11 +100,12 @@ class ShotGridAuthClient:
     """Exchanges credentials with ShotGrid and resolves the user's identity."""
 
     def __init__(self, sg_url: Optional[str] = None) -> None:
-        self.sg_url = (sg_url or os.getenv("SHOTGRID_URL") or "").rstrip("/")
+        sg_cfg = get_config().get("prodtrack").shotgrid
+        self.sg_url = (sg_url or sg_cfg.url or "").rstrip("/")
         if not self.sg_url:
             raise ValueError("SHOTGRID_URL is required.")
         self._token_url = f"{self.sg_url}/api/v1/auth/access_token"
-        self._is_onprem = os.getenv("SG_SITE_TYPE", "cloud").lower() == "onprem"
+        self._is_onprem = sg_cfg.site_type == "onprem"
 
     # ── Grants ────────────────────────────────────────────────────────── #
 
@@ -213,8 +216,9 @@ class ShotGridAuthClient:
         Raises:
             ValueError: Script credentials are not configured.
         """
-        sg_script = os.getenv("SHOTGRID_SCRIPT_NAME")
-        sg_key = os.getenv("SHOTGRID_API_KEY")
+        sg_cfg = get_config().get("prodtrack").shotgrid
+        sg_script = sg_cfg.script_name
+        sg_key = sg_cfg.api_key
         if not (sg_script and sg_key):
             raise ValueError(
                 f"{context}: SHOTGRID_SCRIPT_NAME and SHOTGRID_API_KEY are required "

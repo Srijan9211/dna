@@ -19,9 +19,11 @@ import {
   useUpsertPlaylistMetadata,
 } from '../hooks';
 import { SplitButton } from './SplitButton';
+import type { EntityId } from '@dna/core';
+import { useLabels } from '../hooks/useLabels';
 
 interface TranscriptionMenuProps {
-  playlistId: number | null;
+  playlistId: EntityId | null;
   collapsed?: boolean;
 }
 
@@ -281,6 +283,7 @@ export function TranscriptionMenu({
   playlistId,
   collapsed = false,
 }: TranscriptionMenuProps) {
+  const label = useLabels();
   const [meetingUrl, setMeetingUrl] = useState('');
   const [passcode, setPasscode] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -504,7 +507,7 @@ export function TranscriptionMenu({
 
           {!playlistId && (
             <Text size="1" color="gray">
-              Select a playlist to enable transcription
+              Select a {label('playlist').toLowerCase()} to enable transcription
             </Text>
           )}
         </MenuContainer>

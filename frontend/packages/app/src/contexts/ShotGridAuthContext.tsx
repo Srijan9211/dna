@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { apiHandler } from '../api';
+import type { EntityId } from '@dna/core';
 
 // Short-lived access token, kept per tab. The long-lived refresh token never
 // reaches JavaScript: the backend sets it as an httpOnly cookie.
@@ -33,10 +34,10 @@ const CSRF_HEADERS = { 'X-DNA-CSRF': '1' };
 type RefreshOutcome = 'ok' | 'ended' | 'transient';
 
 export interface ShotGridUser {
-  id: number | string;
+  id: EntityId | string;
   email: string;
   name: string;
-  shotgrid_user_id?: number;
+  shotgrid_user_id?: EntityId;
 }
 
 interface ShotGridAuthContextValue {
@@ -44,8 +45,9 @@ interface ShotGridAuthContextValue {
   isLoading: boolean;
   user: ShotGridUser | null;
   token: string | null;
-  authProvider: 'shotgrid';
-  /** ShotGrid PAT (username + password) login */
+  /** Which tracker signed the user in (the session machinery is the same). */
+  authProvider: SessionAuthProviderType;
+  /** Tracker username + password login (ShotGrid PAT, or AYON) */
   signIn: (username: string, password: string) => Promise<void>;
   /** End this session. Local credentials are always cleared. */
   signOut: () => Promise<void>;
@@ -58,8 +60,13 @@ const ShotGridAuthContext = createContext<ShotGridAuthContextValue | null>(
   null
 );
 
+/** The trackers whose login is a username + password session. */
+export type SessionAuthProviderType = 'shotgrid' | 'ayon';
+
 interface ShotGridAuthProviderProps {
   children: ReactNode;
+  /** Defaults to ShotGrid, the original (and only historic) session login. */
+  provider?: SessionAuthProviderType;
 }
 
 function readStoredUser(): ShotGridUser | null {
@@ -77,7 +84,10 @@ function readStoredExpiry(): number | null {
   return Number.isFinite(stored) && stored > 0 ? stored : null;
 }
 
-export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
+export function ShotGridAuthProvider({
+  children,
+  provider = 'shotgrid',
+}: ShotGridAuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<ShotGridUser | null>(readStoredUser);
   const [token, setToken] = useState<string | null>(() =>
@@ -209,7 +219,11 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
               persist(
                 storedToken,
                 {
-                  id: meData?.shotgrid_user_id ?? storedUser?.id ?? 0,
+                  id:
+                    meData?.tracker_user_id ??
+                    meData?.shotgrid_user_id ??
+                    storedUser?.id ??
+                    0,
                   email: meData?.email ?? storedUser?.email ?? '',
                   name: meData?.name ?? storedUser?.name ?? '',
                   shotgrid_user_id:
@@ -408,7 +422,7 @@ export function ShotGridAuthProvider({ children }: ShotGridAuthProviderProps) {
     isLoading,
     user,
     token,
-    authProvider: 'shotgrid',
+    authProvider: provider,
     signIn,
     signOut,
     signOutEverywhere,

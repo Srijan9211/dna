@@ -1,4 +1,14 @@
-import { ApiHandler, Playlist, Project, User, Version } from '@dna/core';
+import {
+  ApiHandler,
+  Playlist,
+  Project,
+  User,
+  Version,
+  type ConfigAccess,
+  type ConfigRevision,
+  type EffectiveConfig,
+  type EntityId,
+} from '@dna/core';
 import { useQuery } from '@tanstack/react-query';
 
 const apiHandler = new ApiHandler({
@@ -13,7 +23,7 @@ function useGetProjectsForUser(userEmail: string | null) {
   });
 }
 
-function useGetPlaylistsForProject(projectId: number | null) {
+function useGetPlaylistsForProject(projectId: EntityId | null) {
   return useQuery<Playlist[], Error>({
     queryKey: ['playlists', projectId],
     queryFn: () => apiHandler.getPlaylistsForProject({ projectId: projectId! }),
@@ -21,7 +31,7 @@ function useGetPlaylistsForProject(projectId: number | null) {
   });
 }
 
-function useGetVersionsForPlaylist(playlistId: number | null) {
+function useGetVersionsForPlaylist(playlistId: EntityId | null) {
   return useQuery<Version[], Error>({
     queryKey: ['versions', playlistId],
     queryFn: () =>
@@ -38,7 +48,46 @@ function useGetUserByEmail(userEmail: string | null) {
   });
 }
 
+/**
+ * Whether the signed-in user may open the admin pages.  Any failure (not signed in,
+ * admin API off, network) means "no": the pages are simply not offered.
+ */
+function useConfigAccess(enabled = true) {
+  return useQuery<ConfigAccess, Error>({
+    queryKey: ['config', 'access'],
+    queryFn: async () => {
+      try {
+        return await apiHandler.getConfigAccess();
+      } catch {
+        return { admin: false };
+      }
+    },
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
+function useEffectiveConfig(enabled = true) {
+  return useQuery<EffectiveConfig, Error>({
+    queryKey: ['config', 'effective'],
+    queryFn: () => apiHandler.getEffectiveConfig(),
+    enabled,
+  });
+}
+
+function useConfigHistory(enabled = true) {
+  return useQuery<ConfigRevision[], Error>({
+    queryKey: ['config', 'history'],
+    queryFn: () => apiHandler.getConfigHistory(50),
+    enabled,
+  });
+}
+
 export {
+  useConfigAccess,
+  useEffectiveConfig,
+  useConfigHistory,
   useGetProjectsForUser,
   useGetPlaylistsForProject,
   useGetVersionsForPlaylist,

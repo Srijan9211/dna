@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import { resolveMediaUrl } from './utils';
 import {
   GetProjectsForUserParams,
   GetPlaylistsForProjectParams,
@@ -59,6 +60,14 @@ import {
   UpdateQCCheckParams,
   DeleteQCCheckParams,
   RunQCChecksParams,
+  EntityId,
+  ConfigAccess,
+  ConfigChangeResult,
+  ConfigRevision,
+  ConfigValidation,
+  EffectiveConfig,
+  HandshakeReport,
+  HandshakeRequest,
 } from './interfaces';
 
 export interface User {
@@ -82,10 +91,12 @@ function normalizeNoteQCCheck(raw: NoteQCCheck & { id?: string }): NoteQCCheck {
 
 class ApiHandler {
   private axiosInstance: AxiosInstance;
+  private baseURL: string;
   private currentUser: User | null = null;
   private unauthorizedHandler: (() => void) | null = null;
 
   constructor(config: ApiHandlerConfig) {
+    this.baseURL = config.baseURL ?? '';
     this.axiosInstance = axios.create({
       baseURL: config.baseURL,
       timeout: config.timeout ?? 30000,
@@ -203,10 +214,22 @@ class ApiHandler {
     });
   }
 
+  /** Resolve a version's relative media proxy URLs against the API base. */
+  private withLoadableMedia(version: Version): Version {
+    return {
+      ...version,
+      thumbnail: resolveMediaUrl(version.thumbnail, this.baseURL),
+      movie_path: resolveMediaUrl(version.movie_path, this.baseURL),
+    };
+  }
+
   async getVersionsForPlaylist(
     params: GetVersionsForPlaylistParams
   ): Promise<Version[]> {
-    return this.get<Version[]>(`/playlists/${params.playlistId}/versions`);
+    const versions = await this.get<Version[]>(
+      `/playlists/${params.playlistId}/versions`
+    );
+    return versions.map((v) => this.withLoadableMedia(v));
   }
 
   async addVersionToPlaylist(
@@ -371,7 +394,7 @@ class ApiHandler {
     return this.get<StatusOption[]>(`/version-statuses${queryParams}`);
   }
 
-  async getPlaylistDraftNotes(playlistId: number): Promise<DraftNote[]> {
+  async getPlaylistDraftNotes(playlistId: EntityId): Promise<DraftNote[]> {
     return this.get<DraftNote[]>(`/playlists/${playlistId}/draft-notes`);
   }
 
@@ -452,6 +475,57 @@ class ApiHandler {
 
   async deleteAttachment(attachmentId: string): Promise<void> {
     await this.delete(`/api/attachments/${attachmentId}`);
+  }
+
+  // ── Configuration admin (/config/*) ─────────────────────────────────── //
+
+  /** Whether the signed-in user may see the admin pages.  Never throws for "no". */
+  async getConfigAccess(): Promise<ConfigAccess> {
+    return this.get<ConfigAccess>('/config/access');
+  }
+
+  async getEffectiveConfig(): Promise<EffectiveConfig> {
+    return this.get<EffectiveConfig>('/config/effective');
+  }
+
+  /** Dry-run a change; `valid: false` carries every problem found. */
+  async validateConfig(
+    patch: Record<string, unknown>
+  ): Promise<ConfigValidation> {
+    return this.post<ConfigValidation>('/config/validate', { patch });
+  }
+
+  async updateConfigSection(
+    section: string,
+    values: Record<string, unknown>,
+    options: { note?: string; expectedVersion?: number } = {}
+  ): Promise<ConfigChangeResult> {
+    return this.put<ConfigChangeResult>(`/config/${section}`, {
+      values,
+      note: options.note ?? '',
+      expected_version: options.expectedVersion ?? null,
+    });
+  }
+
+  async getConfigHistory(limit = 50): Promise<ConfigRevision[]> {
+    return this.get<ConfigRevision[]>('/config/history', { params: { limit } });
+  }
+
+  async rollbackConfig(version: number): Promise<ConfigChangeResult> {
+    return this.post<ConfigChangeResult>(`/config/rollback/${version}`);
+  }
+
+  /**
+   * Check a (candidate) tracker configuration against the real tracker.  With
+   * `apply`, a report with a failing check is rejected (HTTP 409) and nothing is saved.
+   */
+  async runHandshake(request: HandshakeRequest): Promise<HandshakeReport> {
+    return this.post<HandshakeReport>('/config/prodtrack/handshake', {
+      candidate: request.candidate ?? {},
+      smoke_email: request.smoke_email ?? null,
+      apply: request.apply ?? false,
+      note: request.note ?? '',
+    });
   }
 
   async getAttachmentBlobUrl(attachmentId: string): Promise<string> {

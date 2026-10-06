@@ -2,13 +2,14 @@ import { useState, useEffect, type ReactNode } from 'react';
 import styled from 'styled-components';
 import type { Playlist, Version } from '@dna/core';
 import { Sidebar } from './Sidebar';
+import type { EntityId } from '@dna/core';
 
 interface LayoutProps {
   children: ReactNode;
   onPlaylistChange?: (playlist: Playlist) => void;
-  playlistId: number | null;
-  projectId: number | null;
-  selectedVersionId?: number | null;
+  playlistId: EntityId | null;
+  projectId: EntityId | null;
+  selectedVersionId?: EntityId | null;
   onVersionSelect?: (version: Version) => void;
   userEmail: string;
   onLogout?: () => void;

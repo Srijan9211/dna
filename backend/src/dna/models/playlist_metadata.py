@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+from dna.models.ids import EntityId
 
 
 class PlaylistMetadataUpdate(BaseModel):
@@ -36,7 +37,7 @@ class PlaylistMetadata(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str = Field(alias="_id")
-    playlist_id: int
+    playlist_id: EntityId
     in_review: Optional[int] = None
     meeting_id: Optional[str] = None
     platform: Optional[str] = None

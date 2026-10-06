@@ -25,14 +25,16 @@ import { useGetVersionsForPlaylist, useGetUserByEmail } from '../api';
 import { usePlaylistMetadata, usePlaylistDraftNotes } from '../hooks';
 import { useHotkeyAction, useHotkeyConfig } from '../hotkeys';
 import { useFeatureFlags } from '../contexts';
+import type { EntityId } from '@dna/core';
+import { useLabels } from '../hooks/useLabels';
 
 interface SidebarProps {
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
   onPlaylistChange?: (playlist: Playlist) => void;
-  playlistId: number | null;
-  projectId: number | null;
-  selectedVersionId?: number | null;
+  playlistId: EntityId | null;
+  projectId: EntityId | null;
+  selectedVersionId?: EntityId | null;
   onVersionSelect?: (version: Version) => void;
   userEmail: string;
   onLogout?: () => void;
@@ -248,13 +250,14 @@ export function Sidebar({
   userEmail,
   onLogout,
 }: SidebarProps) {
+  const label = useLabels();
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [toolbarInput, setToolbarInput] = useState<
     'none' | 'add-version' | 'change-playlist'
   >('none');
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const versionRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const versionRefs = useRef<Map<EntityId, HTMLDivElement>>(new Map());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<ExpandableSearchHandle>(null);
 
@@ -307,7 +310,7 @@ export function Sidebar({
 
   const playlistMenuItems = [
     {
-      label: 'Change Playlist',
+      label: `Change ${label('playlist')}`,
       onSelect: () => setToolbarInput('change-playlist'),
     },
     { label: 'Add Version', onSelect: () => setToolbarInput('add-version') },
@@ -331,7 +334,10 @@ export function Sidebar({
     if (!playlistId) {
       return (
         <StateContainer>
-          <StateText>Select a playlist to view versions</StateText>
+          <StateText>
+            Select a {label('playlist').toLowerCase()} to view{' '}
+            {label('version').toLowerCase()}s
+          </StateText>
         </StateContainer>
       );
     }

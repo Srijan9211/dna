@@ -3,13 +3,12 @@
 import asyncio
 import contextlib
 import logging
-import os
 import shutil
 import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Optional, cast
+from typing import Annotated, Literal, Optional, cast
 
 from fastapi import (
     Depends,
@@ -23,13 +22,16 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from starlette.background import BackgroundTask
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from dna.auth.email import emails_match
 from dna.auth.session_store import UserSession
 from dna.auth_providers.auth_provider_base import AuthProviderBase, get_auth_provider
+from dna.auth.errors import AuthBackendUnavailable
+from dna.configsys import get_config
 from dna.cors_settings import get_cors_middleware_kwargs
 from dna.events import EventType, get_event_publisher
 from dna.glossary_config import (
@@ -84,6 +86,7 @@ from dna.models import (
     Version,
 )
 from dna.models.entity import ENTITY_MODELS, EntityBase
+from dna.models.ids import EntityId
 from dna.note_prompt_config import get_default_note_prompt
 from dna.prodtrack_providers.prodtrack_provider_base import (
     ProdtrackAuthError,
@@ -108,7 +111,7 @@ from dna.transcription_service import TranscriptionService, get_transcription_se
 # application's own log records have nowhere to go and are silently dropped —
 # including the CRITICAL emitted when ShotGrid credentials fail verification.
 logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    level=get_config().get("server").log_level,
     format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
 )
 
@@ -203,7 +206,7 @@ tags_metadata = [
     },
 ]
 
-DISABLE_DOCS = os.getenv("DISABLE_DOCS", "false").lower() == "true"
+DISABLE_DOCS = get_config().get("server").disable_docs
 
 # -----------------------------------------------------------------------------
 # Lifecycle
@@ -227,7 +230,7 @@ def _verify_shotgrid_script_credentials() -> bool:
     ``GET /health``, which returns 503 so the instance stays out of rotation
     until ShotGrid recovers.
     """
-    if os.getenv("PRODTRACK_PROVIDER", "shotgrid") != "shotgrid":
+    if get_config().get("prodtrack").connector != "shotgrid":
         return True
     try:
         from dna.prodtrack_providers.shotgrid import ShotgridProvider
@@ -256,7 +259,7 @@ async def lifespan(_app: FastAPI):
     try:
         _startup_checks["shotgrid"] = await asyncio.wait_for(
             asyncio.to_thread(_verify_shotgrid_script_credentials),
-            timeout=float(os.getenv("SG_STARTUP_CHECK_TIMEOUT", "10")),
+            timeout=get_config().get("prodtrack").startup_check_timeout,
         )
     except asyncio.TimeoutError:
         logger.critical(
@@ -472,7 +475,7 @@ def get_auth_context(
     has ended. When AUTH_PROVIDER=none, authentication is skipped and a
     placeholder email is returned (development and tests only).
     """
-    auth_provider_type = os.getenv("AUTH_PROVIDER", "none")
+    auth_provider_type = get_config().get("auth").provider
     if auth_provider_type == "none":
         if credentials and credentials.credentials and auth_provider is not None:
             return AuthContext(
@@ -537,6 +540,12 @@ def get_current_user(auth: AuthContextDep) -> str:
 
 CurrentUserDep = Annotated[str, Depends(get_current_user)]
 
+# Configuration admin API (/config/*).  Off unless admin.enabled; /config/public is
+# always served (the frontend's boot settings).
+from dna.config_api import create_config_router  # noqa: E402
+
+app.include_router(create_config_router(get_auth_context))
+
 
 # -----------------------------------------------------------------------------
 # Production Tracking — per-request, user-scoped provider
@@ -563,22 +572,25 @@ def get_user_scoped_prodtrack_provider(
     sudo_login: Optional[str] = None
     session_id: Optional[str] = None
 
-    if _shotgrid_provider(auth_provider) is not None:
+    session_provider = _session_provider(auth_provider)
+    if session_provider is not None:
+        tracker = session_provider.TRACKER_NAME
         session = auth.session
-        sudo_login = session.sg_username if session else None
+        sudo_login = session.tracker_login if session else None
         session_id = session.session_id if session else None
         if not sudo_login:
-            # No session, or one carrying no ShotGrid login name: it predates
+            # No session, or one carrying no tracker login name: it predates
             # the sudo_as_login design, or a failed refresh blanked it. Reject
-            # rather than fall through to script-account access.
+            # rather than fall through to service-account access.
             logger.warning(
-                "Authenticated request has no ShotGrid login name; rejecting "
-                "instead of falling back to script credentials."
+                "Authenticated request has no %s login name; rejecting "
+                "instead of falling back to service credentials.",
+                tracker,
             )
             raise HTTPException(
                 status_code=401,
                 detail=(
-                    "Session is missing the ShotGrid login name. "
+                    f"Session is missing the {tracker} login name. "
                     "Please log in again."
                 ),
                 headers={"WWW-Authenticate": "Bearer"},
@@ -636,7 +648,7 @@ async def health(response: Response):
     """
     checks: dict[str, bool] = {}
 
-    if os.getenv("AUTH_PROVIDER", "none") != "none":
+    if get_config().get("auth").provider != "none":
         try:
             from dna.auth.session_store import get_session_store
 
@@ -666,7 +678,7 @@ async def test_broadcast_transcript(payload: dict) -> dict:
     Forwards the JSON body verbatim to every WebSocket client — lets us
     assert the broadcast shape end-to-end without needing a real meeting.
     """
-    if os.getenv("DNA_TESTING_ENABLED", "false").lower() not in ("1", "true", "yes"):
+    if not get_config().get("features").testing_enabled:
         raise HTTPException(status_code=404, detail="Not found")
     publisher = get_event_publisher()
     await publisher.ws_manager.broadcast(payload)
@@ -694,20 +706,23 @@ async def auth_get_login_info(auth_provider: AuthProviderDep = None):
     if auth_provider is None:
         return {"mode": "none"}
     try:
-        from dna.auth_providers.shotgrid_sso import ShotGridSSOProvider
-
-        if isinstance(auth_provider, ShotGridSSOProvider):
-            return auth_provider.get_login_info()
+        provider = _session_provider(auth_provider)
+        if provider is not None:
+            return provider.get_login_info()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return {"mode": "none"}
 
 
-def _shotgrid_provider(auth_provider: Optional[AuthProviderBase]):
-    """Return ``auth_provider`` if it is the ShotGrid provider, else None."""
-    from dna.auth_providers.shotgrid_sso import ShotGridSSOProvider
+def _session_provider(auth_provider: Optional[AuthProviderBase]):
+    """Return ``auth_provider`` if it is a tracker session provider (ShotGrid or
+    AYON login), else None."""
+    from dna.auth_providers.shotgrid_sso import SessionAuthProvider
 
-    return auth_provider if isinstance(auth_provider, ShotGridSSOProvider) else None
+    return auth_provider if isinstance(auth_provider, SessionAuthProvider) else None
+
+
+_shotgrid_provider = _session_provider  # the name callers and tests grew up with
 
 
 def _auth_response(body: dict, refresh_cookie: Optional[str] = None) -> JSONResponse:
@@ -755,10 +770,10 @@ def _has_csrf_header(request: Request) -> bool:
 @app.post(
     "/auth/login",
     tags=["Auth"],
-    summary="Standalone login — ShotGrid username + Legacy Password",
+    summary="Standalone login — tracker username + password",
 )
 def auth_login(body: LoginRequest, auth_provider: AuthProviderDep):
-    """Log in with ShotGrid username + Legacy Password.
+    """Log in with the tracker's username + password (ShotGrid Legacy Password, or AYON).
 
     Returns a short-lived access token in the body and sets the refresh token as
     an httpOnly cookie.
@@ -767,20 +782,18 @@ def auth_login(body: LoginRequest, auth_provider: AuthProviderDep):
         return {"message": "Authentication disabled (AUTH_PROVIDER=none)"}
     provider = _shotgrid_provider(auth_provider)
     if provider is None:
-        configured = os.getenv("AUTH_PROVIDER", "none")
+        configured = get_config().get("auth").provider
         return {"message": f"Provider '{configured}': supply Bearer token directly."}
-    from dna.auth.shotgrid_auth_client import ShotGridUnavailable
-
     try:
         result = provider.login(username=body.username, password=body.password)
-    except ShotGridUnavailable as exc:
-        # ShotGrid did not answer, so nothing is known about the credentials.
+    except AuthBackendUnavailable as exc:
+        # The tracker did not answer, so nothing is known about the credentials.
         # The details name internal URLs and errors: log them, never return them
         # to an unauthenticated caller.
-        logger.warning("Login could not reach ShotGrid: %s", exc)
+        logger.warning("Login could not reach %s: %s", provider.TRACKER_NAME, exc)
         raise HTTPException(
             status_code=503,
-            detail="ShotGrid is unavailable right now. Please try again shortly.",
+            detail=f"{provider.TRACKER_NAME} is unavailable right now. Please try again shortly.",
         )
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc))
@@ -935,7 +948,9 @@ async def auth_me(auth: AuthContextDep):
     response: dict = {"email": auth.email}
     if auth.session is not None:
         response["name"] = auth.session.name
-        response["shotgrid_user_id"] = auth.session.sg_user_id
+        if auth.session.shotgrid is not None:
+            response["shotgrid_user_id"] = auth.session.sg_user_id
+        response["tracker_user_id"] = auth.session.tracker_user_id
     return response
 
 
@@ -951,7 +966,7 @@ THUMBNAIL_MEDIA_TYPES = {
     ".webp": "image/webp",
 }
 
-ATTACHMENT_STORE_DIR = Path(os.getenv("ATTACHMENT_STORE_DIR", "/tmp/dna_attachments"))
+ATTACHMENT_STORE_DIR = Path(get_config().get("server").attachment_store_dir)
 ATTACHMENT_STORE_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -1008,7 +1023,7 @@ async def delete_attachment(attachment_id: str, _: CurrentUserDep) -> dict:
     description="Returns a thumbnail image for a version from the mock dataset (when using mock prodtrack provider).",
     response_class=FileResponse,
 )
-async def get_mock_thumbnail(version_id: int):
+async def get_mock_thumbnail(version_id: EntityId):
     """Serve a thumbnail image from mock_data/thumbnails/ for the given version ID."""
     for ext in THUMBNAIL_EXTENSIONS:
         path = MOCK_THUMBNAILS_DIR / f"{version_id}{ext}"
@@ -1057,6 +1072,70 @@ async def websocket_endpoint(websocket: WebSocket):
 # -----------------------------------------------------------------------------
 
 
+def _proxy_media(provider: ProdtrackProviderBase, versions: list[Version]) -> None:
+    """Replace media URLs a browser cannot fetch with signed DNA proxy URLs.
+
+    Only for connectors that need it (``MEDIA_REQUIRES_PROXY``); ShotGrid's signed
+    URLs are left alone.  The token names the user the media is fetched as.
+    """
+    if not getattr(provider, "MEDIA_REQUIRES_PROXY", False):
+        return
+    from dna import media_proxy
+
+    secret = get_config().get("auth").jwt.secret_key or None
+    login = getattr(provider, "sudo_user", None)
+    for version in versions:
+        for field, kind in (("thumbnail", "thumbnail"), ("movie_path", "movie")):
+            if getattr(version, field, None):
+                token = media_proxy.sign_token(
+                    version_id=version.id, kind=kind, login=login, secret=secret
+                )
+                setattr(version, field, media_proxy.media_url(version.id, kind, token))
+
+
+@app.get(
+    "/media/versions/{version_id}/{kind}",
+    tags=["Media"],
+    summary="Stream a version's thumbnail or movie from the tracker",
+    include_in_schema=True,
+)
+def get_media(
+    version_id: EntityId,
+    kind: Literal["thumbnail", "movie"],
+    token: str,
+    request: Request,
+):
+    """Serve tracker media to a browser, authorised by a signed, expiring token.
+
+    The token (issued with the version's data) names the version, the kind and the
+    user, so no ``Authorization`` header is needed: ``<img>`` and ``<video>`` cannot
+    send one.  The media is relayed with the caller's ``Range`` so video can seek.
+    """
+    from dna import media_proxy
+
+    secret = get_config().get("auth").jwt.secret_key or None
+    try:
+        claims = media_proxy.verify_token(
+            token, version_id=version_id, kind=kind, secret=secret
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    try:
+        provider = get_prodtrack_provider(sudo_login=claims.get("u"))
+        stream = provider.open_media(version_id, kind, request.headers.get("range"))
+    except NotImplementedError:
+        raise HTTPException(status_code=404, detail="This connector serves media directly.")
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    headers = {**stream.headers, "Cache-Control": "private, max-age=300"}
+    return StreamingResponse(
+        stream.chunks,
+        status_code=stream.status,
+        headers=headers,
+        background=BackgroundTask(stream.close),
+    )
+
+
 @app.get(
     "/version/{version_id}",
     tags=["Versions"],
@@ -1065,13 +1144,15 @@ async def websocket_endpoint(websocket: WebSocket):
     response_model=Version,
 )
 async def get_version(
-    version_id: int, provider: ProdtrackProviderDep, _: CurrentUserDep
+    version_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Version:
     """Get a version entity by its ID."""
     try:
-        return cast(Version, provider.get_entity("version", version_id))
+        version = cast(Version, provider.get_entity("version", version_id))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    _proxy_media(provider, [version])
+    return version
 
 
 @app.get(
@@ -1082,7 +1163,7 @@ async def get_version(
     response_model=Playlist,
 )
 async def get_playlist(
-    playlist_id: int, provider: ProdtrackProviderDep, _: CurrentUserDep
+    playlist_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Playlist:
     """Get a playlist entity by its ID."""
     try:
@@ -1099,7 +1180,7 @@ async def get_playlist(
     response_model=Shot,
 )
 async def get_shot(
-    shot_id: int, provider: ProdtrackProviderDep, _: CurrentUserDep
+    shot_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Shot:
     """Get a shot entity by its ID."""
     try:
@@ -1116,7 +1197,7 @@ async def get_shot(
     response_model=Asset,
 )
 async def get_asset(
-    asset_id: int, provider: ProdtrackProviderDep, _: CurrentUserDep
+    asset_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Asset:
     """Get an asset entity by its ID."""
     try:
@@ -1133,7 +1214,7 @@ async def get_asset(
     response_model=Task,
 )
 async def get_task(
-    task_id: int, provider: ProdtrackProviderDep, _: CurrentUserDep
+    task_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Task:
     """Get a task entity by its ID."""
     try:
@@ -1150,7 +1231,7 @@ async def get_task(
     response_model=Note,
 )
 async def get_note(
-    note_id: int, provider: ProdtrackProviderDep, _: CurrentUserDep
+    note_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Note:
     """Get a note entity by its ID."""
     try:
@@ -1164,7 +1245,7 @@ async def get_note(
 # -----------------------------------------------------------------------------
 
 
-def _create_stub_entity(entity_type: str, entity_id: int) -> EntityBase:
+def _create_stub_entity(entity_type: str, entity_id: EntityId) -> EntityBase:
     """Create a minimal entity stub for linking purposes."""
     entity_map = {
         "Version": Version,
@@ -1286,7 +1367,7 @@ async def search_entities(
 )
 async def get_version_statuses(
     provider: ProdtrackProviderDep,
-    project_id: Optional[int] = None,
+    project_id: Optional[EntityId] = None,
 ) -> list[StatusOption]:
     """Get valid status options for versions."""
     try:
@@ -1304,7 +1385,7 @@ async def get_version_statuses(
     response_model=UpdateVersionStatusResponse,
 )
 async def update_version_status(
-    version_id: int,
+    version_id: EntityId,
     request: UpdateVersionStatusRequest,
     provider: ProdtrackProviderDep,
     storage: StorageProviderDep,
@@ -1362,7 +1443,7 @@ async def get_projects_for_user(
     user_email: str, provider: ProdtrackProviderDep, current_user: CurrentUserDep
 ) -> list[Project]:
     """Get projects for a user by their email address."""
-    if os.getenv("AUTH_PROVIDER", "none") != "none" and not emails_match(
+    if get_config().get("auth").provider != "none" and not emails_match(
         current_user, user_email
     ):
         raise HTTPException(status_code=403, detail="Access denied.")
@@ -1380,7 +1461,7 @@ async def get_projects_for_user(
     response_model=list[Playlist],
 )
 async def get_playlists_for_project(
-    project_id: int, provider: ProdtrackProviderDep, _: CurrentUserDep
+    project_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> list[Playlist]:
     """Get playlists for a project."""
     try:
@@ -1397,7 +1478,7 @@ async def get_playlists_for_project(
     response_model=Playlist,
 )
 async def create_playlist(
-    project_id: int,
+    project_id: EntityId,
     request: CreatePlaylistRequest,
     provider: ProdtrackProviderDep,
     _: CurrentUserDep,
@@ -1423,7 +1504,7 @@ async def create_playlist(
     response_model=ProjectGlossary,
 )
 async def get_project_glossary(
-    project_id: int,
+    project_id: EntityId,
     provider: StorageProviderDep,
     _: CurrentUserDep,
 ) -> ProjectGlossary:
@@ -1451,7 +1532,7 @@ async def get_project_glossary(
     response_model=ProjectGlossary,
 )
 async def upsert_project_glossary(
-    project_id: int,
+    project_id: EntityId,
     data: ProjectGlossaryUpdate,
     provider: StorageProviderDep,
     _: CurrentUserDep,
@@ -1468,13 +1549,15 @@ async def upsert_project_glossary(
     response_model=list[Version],
 )
 async def get_versions_for_playlist(
-    playlist_id: int, provider: ProdtrackProviderDep, _: CurrentUserDep
+    playlist_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> list[Version]:
     """Get versions for a playlist."""
     try:
-        return provider.get_versions_for_playlist(playlist_id)
+        versions = provider.get_versions_for_playlist(playlist_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    _proxy_media(provider, versions)
+    return versions
 
 
 @app.post(
@@ -1485,7 +1568,7 @@ async def get_versions_for_playlist(
     response_model=Version,
 )
 async def add_version_to_playlist(
-    playlist_id: int,
+    playlist_id: EntityId,
     request: AddVersionToPlaylistRequest,
     provider: ProdtrackProviderDep,
     _: CurrentUserDep,
@@ -1507,7 +1590,7 @@ async def add_version_to_playlist(
     response_model=PublishNotesResponse,
 )
 async def publish_notes(
-    playlist_id: int,
+    playlist_id: EntityId,
     request: PublishNotesRequest,
     storage: StorageProviderDep,
     prodtrack: ProdtrackProviderDep,
@@ -1557,7 +1640,7 @@ async def publish_notes(
 
     from datetime import datetime, timezone
 
-    def _upload_attachments(sg_note_id: int, attachment_ids: list[str]) -> None:
+    def _upload_attachments(sg_note_id: EntityId, attachment_ids: list[str]) -> None:
         """Upload staged attachment files to a ShotGrid note and clean up local files."""
         for attachment_id in attachment_ids:
             attachment_dir = ATTACHMENT_STORE_DIR / attachment_id
@@ -1706,7 +1789,7 @@ async def publish_notes(
 
 
 def _transcript_publish_enabled() -> bool:
-    return os.getenv("DNA_ENABLE_TRANSCRIPT_PUBLISH", "false").lower() == "true"
+    return get_config().get("features").transcript_publish
 
 
 @app.post(
@@ -1720,7 +1803,7 @@ def _transcript_publish_enabled() -> bool:
     response_model=PublishTranscriptResponse,
 )
 async def publish_transcript(
-    playlist_id: int,
+    playlist_id: EntityId,
     request: PublishTranscriptRequest,
     storage: StorageProviderDep,
     prodtrack: ProdtrackProviderDep,
@@ -1824,7 +1907,7 @@ async def publish_transcript(
     except NotImplementedError as e:
         raise HTTPException(status_code=501, detail=str(e))
 
-    entity_type = os.getenv("SHOTGRID_TRANSCRIPT_ENTITY", "CustomEntity01")
+    entity_type = prodtrack.transcript_entity_type(project_id)
     try:
         await storage.upsert_published_transcript(
             PublishedTranscriptUpdate(
@@ -1873,7 +1956,7 @@ async def publish_transcript(
 
 
 async def _sync_published_notes(
-    playlist_id: int,
+    playlist_id: EntityId,
     prodtrack: ProdtrackProviderBase,
     storage: StorageProviderBase,
 ):
@@ -1891,7 +1974,7 @@ async def _sync_published_notes(
 
         # 2. Group by (version_id, author_email) and find latest
         # Map: (version_id, author_email) -> Note
-        latest_notes: dict[tuple[int, str], Note] = {}
+        latest_notes: dict[tuple[EntityId, str], Note] = {}
 
         for version in versions:
             if not version.notes:
@@ -1904,8 +1987,14 @@ async def _sync_published_notes(
                 key = (version.id, note.author.email)
                 existing = latest_notes.get(key)
 
-                # If no existing note for this key, or current note is newer
-                if not existing or note.id > existing.id:
+                # Ids are opaque, so they only order when both are integers
+                # (ShotGrid).  Otherwise the connector's list order is
+                # chronological, so the later note is the newer one.
+                if (
+                    not existing
+                    or not (isinstance(note.id, int) and isinstance(existing.id, int))
+                    or note.id > existing.id
+                ):
                     latest_notes[key] = note
 
         # 3. Upsert selected notes to storage
@@ -1940,7 +2029,7 @@ async def _sync_published_notes(
     response_model=list[DraftNote],
 )
 async def get_playlist_draft_notes(
-    playlist_id: int,
+    playlist_id: EntityId,
     provider: StorageProviderDep,
     prodtrack: ProdtrackProviderDep,
     _: CurrentUserDep,
@@ -1959,8 +2048,8 @@ async def get_playlist_draft_notes(
     response_model=list[DraftNote],
 )
 async def get_all_draft_notes(
-    playlist_id: int,
-    version_id: int,
+    playlist_id: EntityId,
+    version_id: EntityId,
     provider: StorageProviderDep,
     _: CurrentUserDep,
 ) -> list[DraftNote]:
@@ -1976,8 +2065,8 @@ async def get_all_draft_notes(
     response_model=Optional[DraftNote],
 )
 async def get_draft_note(
-    playlist_id: int,
-    version_id: int,
+    playlist_id: EntityId,
+    version_id: EntityId,
     user_email: str,
     provider: StorageProviderDep,
     _: CurrentUserDep,
@@ -1994,8 +2083,8 @@ async def get_draft_note(
     response_model=DraftNote,
 )
 async def upsert_draft_note(
-    playlist_id: int,
-    version_id: int,
+    playlist_id: EntityId,
+    version_id: EntityId,
     user_email: str,
     data: DraftNoteUpdate,
     provider: StorageProviderDep,
@@ -2014,8 +2103,8 @@ async def upsert_draft_note(
     response_model=bool,
 )
 async def delete_draft_note(
-    playlist_id: int,
-    version_id: int,
+    playlist_id: EntityId,
+    version_id: EntityId,
     user_email: str,
     provider: StorageProviderDep,
     _: CurrentUserDep,
@@ -2040,7 +2129,7 @@ async def delete_draft_note(
     response_model=Optional[PlaylistMetadata],
 )
 async def get_playlist_metadata(
-    playlist_id: int,
+    playlist_id: EntityId,
     provider: StorageProviderDep,
     _: CurrentUserDep,
 ) -> Optional[PlaylistMetadata]:
@@ -2056,7 +2145,7 @@ async def get_playlist_metadata(
     response_model=PlaylistMetadata,
 )
 async def upsert_playlist_metadata(
-    playlist_id: int,
+    playlist_id: EntityId,
     data: PlaylistMetadataUpdate,
     provider: StorageProviderDep,
     _: CurrentUserDep,
@@ -2073,7 +2162,7 @@ async def upsert_playlist_metadata(
     response_model=bool,
 )
 async def delete_playlist_metadata(
-    playlist_id: int,
+    playlist_id: EntityId,
     provider: StorageProviderDep,
     _: CurrentUserDep,
 ) -> bool:
@@ -2274,8 +2363,8 @@ async def delete_qc_check(
     response_model=RunQCChecksResponse,
 )
 async def run_qc_checks(
-    playlist_id: int,
-    version_id: int,
+    playlist_id: EntityId,
+    version_id: EntityId,
     body: RunQCChecksRequest,
     storage_provider: StorageProviderDep,
     prodtrack_provider: ProdtrackProviderDep,
@@ -2450,8 +2539,8 @@ async def get_transcript(
     response_model=list[StoredSegment],
 )
 async def get_segments_for_version(
-    playlist_id: int,
-    version_id: int,
+    playlist_id: EntityId,
+    version_id: EntityId,
     storage_provider: StorageProviderDep,
     _: CurrentUserDep,
 ) -> list[StoredSegment]:

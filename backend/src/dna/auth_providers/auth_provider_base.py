@@ -65,24 +65,15 @@ def get_auth_provider() -> Optional[AuthProviderBase]:
     Raises:
         ValueError: If ``AUTH_PROVIDER`` is set to an unrecognised value.
     """
-    provider = os.getenv("AUTH_PROVIDER", "none").lower()
+    from dna.configsys import get_config, providers
 
-    if provider == "none":
-        from dna.auth_providers.noop_auth_provider import NoopAuthProvider
-
-        return NoopAuthProvider()
-
-    elif provider == "google":
-        from dna.auth_providers.google_auth_provider import GoogleAuthProvider
-
-        return GoogleAuthProvider()
-
-    elif provider == "shotgrid":
-        from dna.auth_providers.shotgrid_sso import ShotGridSSOProvider
-
-        return ShotGridSSOProvider()
-
-    else:
+    provider = get_config().get("auth").provider
+    try:
+        return providers.auth.create(provider)
+    except ValueError:
+        if provider in providers.auth.names():
+            raise  # the provider exists; this is its own construction error
+        valid = ", ".join(providers.auth.names())
         raise ValueError(
-            f"Unknown auth provider: '{provider}'. Valid values: none, google, shotgrid."
-        )
+            f"Unknown auth provider: '{provider}'. Valid values: {valid}."
+        ) from None

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useImperativeHandle, forwardRef }
 import styled from 'styled-components';
 import { Search, ChevronUp, ChevronDown } from 'lucide-react';
 import type { Version } from '@dna/core';
+import type { EntityId } from '@dna/core';
 
 export interface ExpandableSearchHandle {
   focus: () => void;
@@ -10,7 +11,7 @@ export interface ExpandableSearchHandle {
 interface ExpandableSearchProps {
   placeholder?: string;
   versions?: Version[];
-  selectedVersionId?: number | null;
+  selectedVersionId?: EntityId | null;
   onVersionSelect?: (version: Version) => void;
   onExpandedChange?: (isExpanded: boolean) => void;
 }

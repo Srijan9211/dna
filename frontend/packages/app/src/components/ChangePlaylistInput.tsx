@@ -3,13 +3,14 @@ import styled from 'styled-components';
 import { Loader2, Plus, X } from 'lucide-react';
 import { Popover } from '@radix-ui/themes';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Playlist } from '@dna/core';
+import { Playlist, type EntityId } from '@dna/core';
 import { apiHandler, useGetPlaylistsForProject } from '../api';
+import { useLabels } from '../hooks/useLabels';
 
 export interface ChangePlaylistInputProps {
-  projectId: number;
+  projectId: EntityId;
   /** Current playlist (hidden from results) */
-  currentPlaylistId?: number;
+  currentPlaylistId?: EntityId;
   onSelect: (playlist: Playlist) => void;
   onClose: () => void;
 }
@@ -155,6 +156,7 @@ export function ChangePlaylistInput({
   onSelect,
   onClose,
 }: ChangePlaylistInputProps) {
+  const label = useLabels();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -262,7 +264,7 @@ export function ChangePlaylistInput({
               onFocus={() => setIsOpen(true)}
               onBlur={() => setIsOpen(false)}
               onKeyDown={handleKeyDown}
-              placeholder="Change playlist..."
+              placeholder={`Change ${label('playlist').toLowerCase()}...`}
             />
             {isPending && <Loader2 size={14} className="animate-spin" />}
           </FieldContainer>

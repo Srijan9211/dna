@@ -4,6 +4,7 @@ import {
   type DNAEvent,
   type EventCallback,
   type TranscriptEventPayload,
+  type EntityId,
 } from '@dna/core';
 import { useEventContext, useEventClient } from '../contexts';
 
@@ -56,8 +57,8 @@ export function useConnectionStatus(): {
 export function useTranscriptEvents(
   callback: EventCallback<TranscriptEventPayload>,
   options: UseDNAEventsOptions & {
-    playlistId?: number | null;
-    versionId?: number | null;
+    playlistId?: EntityId | null;
+    versionId?: EntityId | null;
   } = {}
 ): void {
   const client = useEventClient();

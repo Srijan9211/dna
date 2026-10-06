@@ -1,8 +1,9 @@
-import type {
-  DraftNoteLink,
-  NoteQCAttributeSuggestion,
-  NoteQCResult,
-  SearchResult,
+import {
+  coerceEntityId,
+  type DraftNoteLink,
+  type NoteQCAttributeSuggestion,
+  type NoteQCResult,
+  type SearchResult,
 } from '@dna/core';
 import type { LocalDraftNote } from '../hooks/useDraftNote';
 
@@ -63,23 +64,27 @@ function coerceRecipientJsonString(value: unknown): string | null {
   return null;
 }
 
-function normalizeLinksFromPayload(raw: unknown): DraftNoteLink[] | null {
+export function normalizeLinksFromPayload(raw: unknown): DraftNoteLink[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null;
   const links: DraftNoteLink[] = [];
   for (const item of raw) {
     if (!isPlainObject(item)) continue;
     if ('entity_type' in item || 'entity_id' in item) {
+      const entityId = coerceEntityId(item.entity_id);
+      if (entityId === null) continue;
       links.push({
         entity_type: String(item.entity_type ?? ''),
-        entity_id: Number(item.entity_id),
+        entity_id: entityId,
         entity_name: item.entity_name != null ? String(item.entity_name) : undefined,
       });
       continue;
     }
     if ('type' in item && 'id' in item) {
+      const entityId = coerceEntityId(item.id);
+      if (entityId === null) continue;
       links.push({
         entity_type: String(item.type ?? ''),
-        entity_id: Number(item.id),
+        entity_id: entityId,
         entity_name: item.name != null ? String(item.name) : undefined,
       });
     }

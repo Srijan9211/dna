@@ -4,12 +4,13 @@ import {
   SearchResult,
   SearchableEntityType,
   normalizeEntitySearchQuery,
+  type EntityId,
 } from '@dna/core';
 import { apiHandler } from '../api';
 
 interface UseEntitySearchOptions {
   entityTypes: SearchableEntityType[];
-  projectId?: number;
+  projectId?: EntityId;
   limit?: number;
   debounceMs?: number;
   /** When false, never hits the network (e.g. local mention index is authoritative). */

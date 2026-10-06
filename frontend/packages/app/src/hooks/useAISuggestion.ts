@@ -6,13 +6,14 @@ import {
   type UserSettings,
   type DNAEvent,
   type TranscriptEventPayload,
+  type EntityId,
 } from '@dna/core';
 import { apiHandler } from '../api';
 import { useTranscriptEvents } from './useDNAEvents';
 
 export interface UseAISuggestionOptions {
-  playlistId: number | null;
-  versionId: number | null;
+  playlistId: EntityId | null;
+  versionId: EntityId | null;
   userEmail: string | null;
   enabled?: boolean;
 }
@@ -63,7 +64,7 @@ export function useAISuggestion({
       mutationKey: ['upsertUserSettings', userEmail ?? ''],
     }) > 0 && userEmail != null;
 
-  const prevVersionRef = useRef<number | null>(null);
+  const prevVersionRef = useRef<EntityId | null>(null);
 
   useEffect(() => {
     if (!isEnabled) {

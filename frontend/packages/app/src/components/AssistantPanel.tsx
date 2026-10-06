@@ -7,16 +7,16 @@ import { TranscriptPanel } from './TranscriptPanel';
 import { PromptDebugPanel } from './PromptDebugPanel';
 import { useAISuggestion } from '../hooks';
 import { useHotkeyAction } from '../hotkeys';
-import { useFeatureFlags } from '../contexts';
+import { useFeatureFlags, useRuntimeConfig } from '../contexts';
+import type { EntityId } from '@dna/core';
 
-const isDevMode = import.meta.env.VITE_DEV_MODE === 'true';
 // To re-enable the Other Pending Notes tab, set this to true
 const SHOW_OTHER_NOTES_TAB = false;
 
 interface AssistantPanelProps {
   activeTab?: string;
-  playlistId?: number | null;
-  versionId?: number | null;
+  playlistId?: EntityId | null;
+  versionId?: EntityId | null;
   userEmail?: string | null;
   onInsertNote?: (content: string) => void;
 }
@@ -71,6 +71,7 @@ export function AssistantPanel({
   onInsertNote,
 }: AssistantPanelProps) {
   const { transcriptionEnabled, aiEnabled } = useFeatureFlags();
+  const { devMode: isDevMode } = useRuntimeConfig();
 
   const { suggestion, prompt, context, isLoading, error, regenerate } =
     useAISuggestion({
