@@ -65,6 +65,15 @@ class Registry:
     def sections(self) -> list[SectionSpec]:
         return list(self._specs.values())
 
+    def sorted_env_names(self) -> tuple[str, ...]:
+        """``known_env_names`` as a sorted tuple, computed once per registration set
+        (``get_config()`` needs it on every call, and it never changes at runtime)."""
+        cached = getattr(self, "_env_names_cache", None)
+        if cached is None or cached[0] != len(self._specs):
+            cached = (len(self._specs), tuple(sorted(self.known_env_names())))
+            self._env_names_cache = cached
+        return cached[1]
+
     def known_env_names(self) -> set[str]:
         """Every environment variable this registry reads."""
         names: set[str] = set()

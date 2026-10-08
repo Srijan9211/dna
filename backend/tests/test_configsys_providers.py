@@ -168,3 +168,25 @@ def test_llm_profile_from_yaml_reaches_the_provider(monkeypatch, tmp_path):
     assert provider.model == "gpt-test"
     assert provider.timeout == 12.0
     assert provider.api_key == "sk-from-yaml"
+
+
+def test_the_environment_is_not_re_read_on_every_config_call_in_production(monkeypatch):
+    """get_config() runs many times per request; re-reading ~100 variables each time
+    is real CPU.  Between re-checks it must not touch the environment."""
+    from dna import configsys
+
+    monkeypatch.setattr(configsys, "ENV_RECHECK_SECONDS", 60.0)
+    configsys.reset_config()
+    configsys.get_config()  # the first call always reads it
+    reads = []
+    real = configsys._env_fingerprint
+    monkeypatch.setattr(
+        configsys, "_env_fingerprint", lambda: reads.append(1) or real()
+    )
+    for _ in range(25):
+        configsys.get_config()
+    assert reads == []
+    monkeypatch.setattr(configsys, "_env_checked_at", 0.0)  # the interval elapsed
+    configsys.get_config()
+    assert reads == [1]
+    configsys.reset_config()

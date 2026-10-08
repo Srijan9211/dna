@@ -87,3 +87,22 @@ def auth_client():
             return super().request(*args, **kwargs)
 
     return AuthenticatedTestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _clear_ayon_caches():
+    """The AYON provider caches lookups per process; tests must not see each other's."""
+    from dna.prodtrack_providers import ayon
+
+    ayon._REVIEWABLES.clear()
+    ayon._AUTHORS.clear()
+    yield
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _check_the_environment_on_every_config_read():
+    """Tests change the environment on purpose; production re-reads it every few seconds."""
+    from dna import configsys
+
+    configsys.ENV_RECHECK_SECONDS = 0
+    yield

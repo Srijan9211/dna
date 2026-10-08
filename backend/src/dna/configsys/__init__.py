@@ -74,11 +74,18 @@ _store: Optional[OverrideStore] = None
 _applied_version = 0  # the store revision currently reflected in ``_runtime``
 _checked_at = 0.0
 
+# ``get_config()`` runs many times per request, and reading ~100 environment
+# variables each time is real CPU (notably on Windows).  A running server's
+# environment does not change, so it is re-read at most this often; 0 means every
+# call (the test suite does that, because tests change the environment on purpose).
+ENV_RECHECK_SECONDS = 5.0
+_env_checked_at = 0.0
+
 
 def _env_fingerprint() -> tuple:
     """Everything in the environment the service reads, as a comparable value."""
     env = os.environ
-    names = sorted(default_registry.known_env_names())
+    names = default_registry.sorted_env_names()
     return (
         env.get(CONFIG_DIR_ENV),
         tuple(env.get(n) for n in names),
@@ -130,8 +137,17 @@ def _sync_from_store(service: ConfigService) -> ConfigService:
 
 def get_config() -> ConfigService:
     """The process-wide service, (re)loaded when its inputs changed."""
-    global _service, _fingerprint
-    current = _env_fingerprint()
+    global _service, _fingerprint, _env_checked_at
+    now = time.monotonic()
+    if (
+        _service is not None
+        and ENV_RECHECK_SECONDS > 0
+        and now - _env_checked_at < ENV_RECHECK_SECONDS
+    ):
+        current = _fingerprint
+    else:
+        current = _env_fingerprint()
+        _env_checked_at = now
     if _service is not None and current == _fingerprint:
         due = _service.get("admin").persist and (
             time.monotonic() - _checked_at >= _service.get("admin").refresh_seconds
@@ -250,6 +266,7 @@ def import_overrides(
 def reset_config() -> None:
     """Drop the cached service, overrides and store (tests)."""
     global _service, _fingerprint, _runtime, _store, _applied_version, _checked_at
+    global _env_checked_at
     with _lock:
         _service, _fingerprint, _runtime, _store = None, None, {}, None
-        _applied_version, _checked_at = 0, 0.0
+        _applied_version, _checked_at, _env_checked_at = 0, 0.0, 0.0

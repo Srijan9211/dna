@@ -802,3 +802,54 @@ def test_client_requires_url_and_key():
         AyonClient("", "k")
     with pytest.raises(ValueError, match="AYON_API_KEY"):
         AyonClient("http://x", "")
+
+
+# ── caching and concurrency ──────────────────────────────────────────────────
+
+
+def _reviewable_calls(fake):
+    return [
+        c for c in fake.log if c["op"] == "rest" and c["path"].endswith("/reviewables")
+    ]
+
+
+def test_reviewables_are_cached_briefly_for_the_same_user():
+    p, fake = provider()
+    p.get_versions_for_playlist(f"{P}:L1")
+    first = len(_reviewable_calls(fake))
+    p.get_versions_for_playlist(f"{P}:L1")
+    assert first > 0 and len(_reviewable_calls(fake)) == first  # second read: no calls
+
+
+def test_one_users_cached_reviewables_are_never_served_to_another():
+    """Reviewables are fetched with the acting user's access; a cache shared across
+    users would let someone see media metadata they may not."""
+    p, fake = provider(sudo_user="ann")
+    p.get_versions_for_playlist(f"{P}:L1")
+    after_ann = len(_reviewable_calls(fake))
+    q = AyonProvider(client=fake, sudo_user="bob")
+    q.get_versions_for_playlist(f"{P}:L1")
+    assert len(_reviewable_calls(fake)) > after_ann  # bob had to ask for himself
+
+
+def test_cached_author_objects_cannot_be_changed_through_a_result():
+    p, _ = provider()
+    first = p.get_versions_for_playlist(f"{P}:L1")
+    assert first[1].user["name"] == "Ann Artist"
+    first[1].user["name"] = "tampered"
+    again = p.get_versions_for_playlist(f"{P}:L1")
+    assert again[1].user["name"] == "Ann Artist"
+
+
+def test_search_results_keep_the_order_the_types_were_asked_for():
+    p, _ = provider()
+    got = p.search("", ["version", "user", "shot"], P)
+    types = [r["type"] for r in got]
+    assert types.index("Version") < types.index("User") < types.index("Shot")
+
+
+def test_an_unsupported_type_fails_before_any_search_runs():
+    p, fake = provider()
+    with pytest.raises(ValueError, match="Unsupported entity type"):
+        p.search("x", ["user", "note"])
+    assert not fake.queries  # nothing was sent to the tracker

@@ -36,7 +36,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
-from typing import Any, Iterable, Literal, Optional
+from typing import Any, Callable, Iterable, Literal, Optional
 
 from dna.configsys import get_config
 from dna.configsys.meta import Section
@@ -61,6 +61,7 @@ from dna.prodtrack_providers.prodtrack_provider_base import (
     UserNotFoundError,
 )
 from dna.prodtrack_providers.profile import ConnectorProfile, load_profile
+from dna.prodtrack_providers.ttl_cache import TTLCache
 
 # ── ids ──────────────────────────────────────────────────────────────────────
 
@@ -84,6 +85,14 @@ def split_id(value: Any) -> tuple[str, str]:
 
 
 # ── adapter config ───────────────────────────────────────────────────────────
+
+
+# One bounded pool shared by every request: a pool per call multiplies threads by
+# the number of concurrent users.  The caches are per process and keyed by the
+# acting user, so one person's access can never answer for another's.
+_POOL = ThreadPoolExecutor(max_workers=16, thread_name_prefix="ayon")
+_REVIEWABLES = TTLCache(ttl_seconds=30)
+_AUTHORS = TTLCache(ttl_seconds=60)
 
 
 class AyonAdapter(Section):
@@ -379,13 +388,25 @@ class AyonProvider(ProdtrackProviderBase):
         names = sorted({n for n in names if n})
         if not names:
             return {}
+        # Display lookups are cached briefly; a lookup made through an explicit
+        # client (verifying who may be impersonated) is always fresh.
+        key = None if client is not None else (self.url, self._c.as_user, tuple(names))
+        if key is not None:
+            hit, cached = _AUTHORS.get(key)
+            if hit:
+                return {name: user.model_copy() for name, user in cached.items()}
         sel = build_selection(["name", "active", *self.mapper.binding("user").fields])
         data = (client or self._c).graphql(
             f"query($names: [String!]) {{ users(names: $names) {{ edges {{ node {{ {sel} }} }} }} }}",
             {"names": names},
         )
         nodes = [e["node"] for e in data.get("users", {}).get("edges", [])]
-        return {n["name"]: self._user_entity(n) for n in nodes if n.get("active", True)}
+        found = {
+            n["name"]: self._user_entity(n) for n in nodes if n.get("active", True)
+        }
+        if key is not None:
+            _AUTHORS.put(key, {name: user.model_copy() for name, user in found.items()})
+        return found
 
     def get_user_by_email(self, user_email: str) -> User:
         sel = build_selection(["name", "active", *self.mapper.binding("user").fields])
@@ -539,13 +560,19 @@ class AyonProvider(ProdtrackProviderBase):
         return nodes
 
     def _reviewables(self, project: str, version_uuid: str) -> list[dict]:
+        key = (self.url, self._c.as_user, project, version_uuid)
+        hit, cached = _REVIEWABLES.get(key)
+        if hit:
+            return cached
         try:
             body = self._c.rest(
                 "GET", f"/api/projects/{project}/versions/{version_uuid}/reviewables"
             )
         except AyonNotFound:
             return []
-        return body.get("reviewables", []) if isinstance(body, dict) else []
+        found = body.get("reviewables", []) if isinstance(body, dict) else []
+        _REVIEWABLES.put(key, found)
+        return found
 
     def _pick_reviewable(self, reviewables: list[dict]) -> Optional[dict]:
         if not reviewables:
@@ -721,8 +748,7 @@ class AyonProvider(ProdtrackProviderBase):
 
     def _build_versions(self, project: str, nodes: list[dict]) -> list[Version]:
         users = self._version_authors(nodes)
-        with ThreadPoolExecutor(max_workers=max(1, self.adapter.max_workers)) as pool:
-            media = list(pool.map(lambda n: self._reviewables(project, n["id"]), nodes))
+        media = list(_POOL.map(lambda n: self._reviewables(project, n["id"]), nodes))
         return [
             self._version_entity(
                 project, node, reviewable=self._pick_reviewable(items), users=users
@@ -1092,23 +1118,27 @@ class AyonProvider(ProdtrackProviderBase):
         q = (query or "").strip()
         results: list[dict[str, Any]] = []
         projects = [self._project_name(project_id)] if project_id else None
+        jobs: list[Callable[[], list[dict[str, Any]]]] = []
         for entity_type in entity_types:
             if entity_type == "user":
-                results += self._search_users(q, limit)
-            elif entity_type in ("shot", "asset"):
-                for project in projects or self._accessible_projects():
-                    results += self._search_folders(project, entity_type, q, limit)
-            elif entity_type == "version":
-                for project in projects or self._accessible_projects():
-                    results += self._search_versions(project, q, limit)
-            elif entity_type == "task":
-                for project in projects or self._accessible_projects():
-                    results += self._search_tasks(project, q, limit)
-            elif entity_type == "playlist":
-                for project in projects or self._accessible_projects():
-                    results += self._search_playlists(project, q, limit)
-            else:
+                jobs.append(lambda: self._search_users(q, limit))
+                continue
+            searches = {
+                "shot": lambda p, t="shot": self._search_folders(p, t, q, limit),
+                "asset": lambda p, t="asset": self._search_folders(p, t, q, limit),
+                "version": lambda p: self._search_versions(p, q, limit),
+                "task": lambda p: self._search_tasks(p, q, limit),
+                "playlist": lambda p: self._search_playlists(p, q, limit),
+            }
+            search = searches.get(entity_type)
+            if search is None:
                 raise ValueError(f"Unsupported entity type: {entity_type}")
+            for project in projects or self._accessible_projects():
+                jobs.append(lambda p=project, f=search: f(p))
+        # The searches are independent reads, so they run side by side; results keep
+        # the order the types were asked for.
+        for found in _POOL.map(lambda job: job(), jobs):
+            results += found
         return results
 
     def _search_tasks(self, project: str, q: str, limit: int) -> list[dict[str, Any]]:
