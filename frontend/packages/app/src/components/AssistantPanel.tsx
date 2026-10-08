@@ -106,7 +106,9 @@ export function AssistantPanel({
       <StyledTabsRoot defaultValue={defaultTab}>
         <StyledTabsList>
           {aiEnabled && (
-            <StyledTabsTrigger value="assistant">AI Assistant</StyledTabsTrigger>
+            <StyledTabsTrigger value="assistant">
+              AI Assistant
+            </StyledTabsTrigger>
           )}
           {transcriptionEnabled && (
             <StyledTabsTrigger value="transcript">Transcript</StyledTabsTrigger>

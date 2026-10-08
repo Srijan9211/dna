@@ -405,7 +405,9 @@ export function VersionHeader({
   const label = useLabels();
   const { getLabel } = useHotkeyConfig();
   const { inReviewEnabled } = useFeatureFlags();
-  const { statuses, isLoading: isLoadingStatuses } = useVersionStatuses({ projectId });
+  const { statuses, isLoading: isLoadingStatuses } = useVersionStatuses({
+    projectId,
+  });
   const displayTitle = shotCode && versionNumber ? `${shotCode} - ` : '';
   const displayCode = versionNumber || shotCode || 'Untitled Version';
 
@@ -425,18 +427,20 @@ export function VersionHeader({
               In Review
             </InReviewButton>
           )}
-          {prodtrackDetailUrl && prodtrackTabUsesExtension && onSyncProdtrackTab && (
-            <Tooltip content={syncProdtrackTitle}>
-              <SyncProdtrackButton
-                type="button"
-                onClick={() => void onSyncProdtrackTab()}
-                disabled={syncProdtrackDisabled}
-              >
-                <ExternalLink size={14} />
-                PT tab
-              </SyncProdtrackButton>
-            </Tooltip>
-          )}
+          {prodtrackDetailUrl &&
+            prodtrackTabUsesExtension &&
+            onSyncProdtrackTab && (
+              <Tooltip content={syncProdtrackTitle}>
+                <SyncProdtrackButton
+                  type="button"
+                  onClick={() => void onSyncProdtrackTab()}
+                  disabled={syncProdtrackDisabled}
+                >
+                  <ExternalLink size={14} />
+                  PT tab
+                </SyncProdtrackButton>
+              </Tooltip>
+            )}
           {prodtrackDetailUrl && !prodtrackTabUsesExtension && (
             <Tooltip content={syncProdtrackTitle}>
               <SyncProdtrackLink

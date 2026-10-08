@@ -14,7 +14,7 @@ layer, so what an admin saves is validated exactly like what a file contains.
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -30,9 +30,9 @@ from dna.configsys.layers import (
     load_file_layers,
     merge_layers,
 )
-from dna.configsys.meta import lookup, meta
+from dna.configsys.meta import iter_fields, lookup, meta
 from dna.configsys.registry import Registry, default_registry
-from dna.configsys.secrets import is_ref, mask, resolve_refs
+from dna.configsys.secrets import is_ref, mask, ref_target, resolve_refs
 
 CONFIG_DIR_ENV = "DNA_CONFIG_DIR"
 
@@ -83,9 +83,7 @@ class ConfigService:
         runtime_overrides: Optional[dict[str, Any]] = None,
     ):
         self._registry = registry
-        self._environ: Mapping[str, str] = (
-            os.environ if environ is None else environ
-        )
+        self._environ: Mapping[str, str] = os.environ if environ is None else environ
         if config_dir is None and self._environ.get(CONFIG_DIR_ENV):
             config_dir = Path(self._environ[CONFIG_DIR_ENV])
         self._config_dir = config_dir
@@ -109,6 +107,7 @@ class ConfigService:
         merged, provenance = merge_layers(layers)
 
         issues: list[Issue] = []
+        issues.extend(self._check_runtime_references(layers, runtime))
         ref_errors: list[tuple[str, str]] = []
         merged = resolve_refs(merged, self._environ, ref_errors)
         issues.extend(
@@ -120,7 +119,9 @@ class ConfigService:
         for name in merged:
             if name not in known:
                 issues.append(
-                    Issue(name, name, "unknown config section", provenance.get(name, ""))
+                    Issue(
+                        name, name, "unknown config section", provenance.get(name, "")
+                    )
                 )
 
         models: dict[str, BaseModel] = {}
@@ -140,6 +141,70 @@ class ConfigService:
         if issues:
             raise ConfigError(issues)
         return _State(models, provenance, merged, projects)
+
+    def _check_runtime_references(
+        self, layers: list[Layer], runtime: dict[str, Any]
+    ) -> list[Issue]:
+        """Keep runtime changes from reading arbitrary server secrets.
+
+        The runtime layer is writable through the admin API.  If it could carry any
+        ``${env:NAME}`` or ``${file:PATH}``, an administrator could point a plain
+        setting (or a tracker URL they control) at ``${env:JWT_SECRET}`` or a file
+        and read the value back.  So a reference there is accepted only on a secret
+        setting, and only for something the operator already sanctioned: an
+        environment variable that a secret setting is documented to read, or a
+        reference the operator wrote in the config files.
+        """
+        if not runtime:
+            return []
+        env_names: set[str] = set()
+        file_refs: set[str] = set()
+        for spec in self._registry.sections():
+            for _, info in iter_fields(spec.model):
+                m = meta(info)
+                if m.get("secret") and m.get("env"):
+                    env_names.add(m["env"])
+        for layer in layers:
+            if layer.name != "file":
+                continue
+            for _, value in _walk_strings(layer.data):
+                target = ref_target(value) if is_ref(value) else None
+                if target is None:
+                    continue
+                if target[0] == "env":
+                    env_names.add(target[1])
+                else:
+                    file_refs.add(value)
+
+        issues: list[Issue] = []
+        for path, value in _walk_strings(runtime):
+            target = ref_target(value) if is_ref(value) else None
+            if target is None:
+                continue
+            dotted = ".".join(path)
+            section = path[0]
+            field_path = path[1:]
+            if section == PROJECTS_KEY:
+                section, field_path = (path[2], path[3:]) if len(path) > 3 else ("", ())
+            info = (
+                lookup(self._registry.get(section).model, field_path)
+                if section in self._registry and field_path
+                else None
+            )
+            kind, name = target
+            if not (info is not None and meta(info).get("secret")):
+                msg = "references are only allowed on secret settings"
+            elif kind == "env" and name not in env_names:
+                msg = (
+                    f"environment variable {name} cannot be referenced from runtime "
+                    "configuration; use one the operator has configured for secrets"
+                )
+            elif kind == "file" and value not in file_refs:
+                msg = "file references cannot be set at runtime; define them in the config files"
+            else:
+                continue
+            issues.append(Issue(path[0], dotted, msg, "runtime"))
+        return issues
 
     @staticmethod
     def _issues_from(
@@ -164,7 +229,11 @@ class ConfigService:
             for name, patch in (sections or {}).items():
                 if name not in self._registry:
                     issues.append(
-                        Issue(name, f"{PROJECTS_KEY}.{pid}.{name}", "unknown config section")
+                        Issue(
+                            name,
+                            f"{PROJECTS_KEY}.{pid}.{name}",
+                            "unknown config section",
+                        )
                     )
                     continue
                 model_cls = self._registry.get(name).model
@@ -181,12 +250,12 @@ class ConfigService:
                 if base is None:
                     continue
                 try:
-                    model_cls.model_validate(
-                        deep_merge(base.model_dump(), patch or {})
-                    )
+                    model_cls.model_validate(deep_merge(base.model_dump(), patch or {}))
                 except ValidationError as exc:
                     issues.extend(
-                        self._issues_from(f"{PROJECTS_KEY}.{pid}.{name}", exc, provenance)
+                        self._issues_from(
+                            f"{PROJECTS_KEY}.{pid}.{name}", exc, provenance
+                        )
                     )
         return issues
 
@@ -223,7 +292,8 @@ class ConfigService:
     def effective(self, *, mask_secrets: bool = True) -> dict[str, Any]:
         """Resolved configuration, secrets masked unless explicitly disabled."""
         return {
-            name: _dump(model, mask_secrets) for name, model in self.state.models.items()
+            name: _dump(model, mask_secrets)
+            for name, model in self.state.models.items()
         }
 
     def provenance(self) -> dict[str, str]:
@@ -291,7 +361,9 @@ class ConfigService:
             raise ConfigError(issues)
 
         before = {n: _dump(m, False) for n, m in self.state.models.items()}
-        new_runtime = deep_merge({}, patch) if replace else deep_merge(self._runtime, patch)
+        new_runtime = (
+            deep_merge({}, patch) if replace else deep_merge(self._runtime, patch)
+        )
         new_state = self._build(new_runtime)  # raises ConfigError, state untouched
 
         changed: list[str] = []
@@ -346,3 +418,17 @@ def _plain(value: Any, mask_secrets: bool) -> Any:
     if isinstance(value, (list, tuple)):
         return [_plain(v, mask_secrets) for v in value]
     return value
+
+
+def _walk_strings(
+    data: Any, path: tuple[str, ...] = ()
+) -> Iterator[tuple[tuple[str, ...], str]]:
+    """Every string leaf of a nested mapping/list, with its path."""
+    if isinstance(data, Mapping):
+        for key, value in data.items():
+            yield from _walk_strings(value, (*path, str(key)))
+    elif isinstance(data, list):
+        for i, value in enumerate(data):
+            yield from _walk_strings(value, (*path, str(i)))
+    elif isinstance(data, str):
+        yield path, data

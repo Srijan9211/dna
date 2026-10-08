@@ -18,9 +18,15 @@ from dna.models.ids import EntityId, normalize_id
         ("42", 42),  # ShotGrid ids arriving as text (URL segments, JSON strings)
         (" 42 ", 42),
         (42.0, 42),
-        ("dna_test:5fd4ea6ac19911f1877e42dd13c3d9cf", "dna_test:5fd4ea6ac19911f1877e42dd13c3d9cf"),
+        (
+            "dna_test:5fd4ea6ac19911f1877e42dd13c3d9cf",
+            "dna_test:5fd4ea6ac19911f1877e42dd13c3d9cf",
+        ),
         ("srijan9211", "srijan9211"),  # an AYON user id; digits inside a word stay text
-        ("1234567890123456", "1234567890123456"),  # 16 digits: too long to be a tracker int
+        (
+            "1234567890123456",
+            "1234567890123456",
+        ),  # 16 digits: too long to be a tracker int
         ("12345678901234567890123456789012", "12345678901234567890123456789012"),
     ],
 )
@@ -74,7 +80,11 @@ def _app() -> TestClient:
 
 def test_path_parameter_keeps_integers_as_integers():
     client = _app()
-    assert client.get("/things/123").json() == {"id": 123, "type": "int", "related": None}
+    assert client.get("/things/123").json() == {
+        "id": 123,
+        "type": "int",
+        "related": None,
+    }
 
 
 def test_path_parameter_keeps_ayon_ids_as_strings():
@@ -89,9 +99,18 @@ def test_path_parameter_keeps_ayon_ids_as_strings():
 
 def test_body_accepts_numbers_and_strings():
     client = _app()
-    assert client.post("/things", json={"version_id": 42}).json() == {"id": 42, "type": "int"}
-    assert client.post("/things", json={"version_id": "42"}).json() == {"id": 42, "type": "int"}
-    assert client.post("/things", json={"version_id": "demo:abc"}).json() == {"id": "demo:abc", "type": "str"}
+    assert client.post("/things", json={"version_id": 42}).json() == {
+        "id": 42,
+        "type": "int",
+    }
+    assert client.post("/things", json={"version_id": "42"}).json() == {
+        "id": 42,
+        "type": "int",
+    }
+    assert client.post("/things", json={"version_id": "demo:abc"}).json() == {
+        "id": "demo:abc",
+        "type": "str",
+    }
     assert client.post("/things", json={"version_id": True}).status_code == 422
     assert client.post("/things", json={"version_id": ""}).status_code == 422
 
@@ -108,7 +127,9 @@ def test_the_real_api_routes_take_ayon_ids():
     import main
 
     client = TestClient(main.app)
-    response = client.get("/playlists/dna_test:5fd4ea6ac19911f1877e42dd13c3d9cf/versions")
+    response = client.get(
+        "/playlists/dna_test:5fd4ea6ac19911f1877e42dd13c3d9cf/versions"
+    )
     assert response.status_code != 422
 
 
@@ -126,7 +147,11 @@ def test_every_id_parameter_in_the_real_api_accepts_a_string_id():
         for method, op in methods.items():
             for param in op.get("parameters", []):
                 name = param["name"]
-                is_id = name.endswith("_id") and name not in ("vexa_meeting_id", "segment_id", "attachment_id")
+                is_id = name.endswith("_id") and name not in (
+                    "vexa_meeting_id",
+                    "segment_id",
+                    "attachment_id",
+                )
                 if is_id and param["schema"].get("type") == "integer":
                     offenders.append(f"{method.upper()} {path} ({name})")
     assert not offenders, f"integer-only id parameters: {offenders}"

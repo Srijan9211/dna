@@ -92,7 +92,9 @@ def _get_store(service: ConfigService) -> OverrideStore:
     if _store is None:
         if service.get("admin").persist:
             storage = service.get("storage")
-            _store = MongoOverrideStore(url=storage.mongodb_url, db_name=storage.mongodb_db)
+            _store = MongoOverrideStore(
+                url=storage.mongodb_url, db_name=storage.mongodb_db
+            )
         else:
             _store = MemoryOverrideStore()
     return _store
@@ -113,11 +115,14 @@ def _sync_from_store(service: ConfigService) -> ConfigService:
     except ConfigError as exc:
         logger.error(
             "Config revision could not be applied; continuing with the files and "
-            "environment only. Fix it and save a new revision, or roll back:\n%s", exc,
+            "environment only. Fix it and save a new revision, or roll back:\n%s",
+            exc,
         )
         return service
     except Exception as exc:  # store unreachable
-        logger.error("Config override store unavailable; keeping current config: %s", exc)
+        logger.error(
+            "Config override store unavailable; keeping current config: %s", exc
+        )
         return service
     _runtime, _applied_version = latest.overrides, latest.version
     return loaded
@@ -146,7 +151,9 @@ def get_config() -> ConfigService:
 # ── changing configuration at runtime ────────────────────────────────────────
 
 
-def preview_overrides(patch: Mapping[str, Any], *, replace: bool = False) -> ChangeResult:
+def preview_overrides(
+    patch: Mapping[str, Any], *, replace: bool = False
+) -> ChangeResult:
     """What ``patch`` would change, validated exactly as a real change, applied to nothing."""
     return get_config().apply_overrides(patch, replace=replace, dry_run=True)
 
@@ -173,13 +180,19 @@ def apply_overrides(
     with _lock:
         service = get_config()
         preview = service.apply_overrides(patch, replace=replace, dry_run=True)
-        snapshot = deep_merge({}, patch) if replace else deep_merge(service.runtime_overrides, patch)
+        snapshot = (
+            deep_merge({}, patch)
+            if replace
+            else deep_merge(service.runtime_overrides, patch)
+        )
         revision = _get_store(service).append(
             snapshot,
             actor=actor,
             note=note,
             changed=tuple(preview.changed),
-            expected_version=_applied_version if expected_version is None else expected_version,
+            expected_version=(
+                _applied_version if expected_version is None else expected_version
+            ),
         )
         result = service.apply_overrides(patch, replace=replace)
         _runtime, _applied_version = service.runtime_overrides, revision.version
@@ -204,20 +217,31 @@ def rollback(version: int, *, actor: str = "system") -> ChangeResult:
     if target is None:
         raise ValueError(f"No config revision {version}")
     return apply_overrides(
-        target.overrides, actor=actor, note=f"rollback to revision {version}", replace=True
+        target.overrides,
+        actor=actor,
+        note=f"rollback to revision {version}",
+        replace=True,
     )
 
 
 def export_overrides() -> dict[str, Any]:
     """The current runtime overrides as a portable document (references, never secrets)."""
     service = get_config()
-    return {"format": 1, "revision": _applied_version, "overrides": service.runtime_overrides}
+    return {
+        "format": 1,
+        "revision": _applied_version,
+        "overrides": service.runtime_overrides,
+    }
 
 
-def import_overrides(document: Mapping[str, Any], *, actor: str = "system") -> ChangeResult:
+def import_overrides(
+    document: Mapping[str, Any], *, actor: str = "system"
+) -> ChangeResult:
     """Replace the runtime overrides with an exported document."""
     if document.get("format") != 1 or not isinstance(document.get("overrides"), dict):
-        raise ValueError("Not a DNA config export (expected format 1 with an 'overrides' mapping)")
+        raise ValueError(
+            "Not a DNA config export (expected format 1 with an 'overrides' mapping)"
+        )
     return apply_overrides(
         document["overrides"], actor=actor, note="import", replace=True
     )

@@ -41,7 +41,9 @@ class ProfileMapper:
 
     # ── kinds <-> tracker entities ────────────────────────────────────────
 
-    def binding(self, kind: str, *, message: str = "Unknown entity type: {kind}") -> EntityBinding:
+    def binding(
+        self, kind: str, *, message: str = "Unknown entity type: {kind}"
+    ) -> EntityBinding:
         found = self.profile.entities.get(kind)
         if found is None:
             raise ValueError(message.format(kind=kind))
@@ -77,7 +79,9 @@ class ProfileMapper:
         """Tracker field behind a DNA field, whether plain or a link."""
         found = self.tracker_field_or_none(kind, dna_field)
         if found is None:
-            raise ValueError(f"No tracker field for '{kind}.{dna_field}' in the connector profile")
+            raise ValueError(
+                f"No tracker field for '{kind}.{dna_field}' in the connector profile"
+            )
         return found
 
     def tracker_field_or_none(self, kind: str, dna_field: str) -> Optional[str]:
@@ -95,7 +99,9 @@ class ProfileMapper:
         binding = self.binding(kind)
         return [*binding.fields, *binding.links]
 
-    def dna_to_tracker(self, kind: str, *, message: str = "Unknown entity type: {kind}") -> dict[str, str]:
+    def dna_to_tracker(
+        self, kind: str, *, message: str = "Unknown entity type: {kind}"
+    ) -> dict[str, str]:
         binding = self.binding(kind, message=message)
         out = {dna: tracker for tracker, dna in binding.fields.items()}
         out.update({dna: tracker for tracker, dna in binding.links.items()})
@@ -119,7 +125,9 @@ class ProfileMapper:
         self, kind: str, filters: list[dict[str, Any]]
     ) -> list[list[Any]]:
         """Translate DNA filters (``{field, operator, value}``) to tracker filters."""
-        dna_to_tracker = self.dna_to_tracker(kind, message="Unsupported entity type: {kind}")
+        dna_to_tracker = self.dna_to_tracker(
+            kind, message="Unsupported entity type: {kind}"
+        )
         out: list[list[Any]] = []
         for f in filters:
             tracker = dna_to_tracker.get(f.get("field"))
@@ -141,6 +149,4 @@ class ProfileMapper:
         base = (base or "").rstrip("/")
         if not template or not base:
             return None
-        return template.format(
-            base=base, type=self.source(kind), id=entity_id, **extra
-        )
+        return template.format(base=base, type=self.source(kind), id=entity_id, **extra)

@@ -24,7 +24,10 @@ export function PublishDialog({
   const [isPending, setIsPending] = useState(false);
 
   return (
-    <Dialog.Root open={open} onOpenChange={(isOpen) => !isOpen && !isPending && onClose()}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(isOpen) => !isOpen && !isPending && onClose()}
+    >
       <Dialog.Content
         maxWidth="900px"
         style={{

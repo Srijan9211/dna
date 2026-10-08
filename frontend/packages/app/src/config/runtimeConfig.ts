@@ -118,10 +118,17 @@ export const DEFAULT_CAPABILITIES: TrackerCapabilities = {
   impersonation: 'none',
 };
 
-const AUTH_PROVIDERS: readonly string[] = ['none', 'google', 'shotgrid', 'ayon'];
+const AUTH_PROVIDERS: readonly string[] = [
+  'none',
+  'google',
+  'shotgrid',
+  'ayon',
+];
 const FALLBACK_WS_URL = 'ws://localhost:8000/ws';
 
-function asAuthProvider(value: string | undefined | null): AuthProviderType | null {
+function asAuthProvider(
+  value: string | undefined | null
+): AuthProviderType | null {
   return value && AUTH_PROVIDERS.includes(value)
     ? (value as AuthProviderType)
     : null;
@@ -215,13 +222,18 @@ export async function fetchPublicConfig(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetchImpl(`${apiBase.replace(/\/+$/, '')}/config/public`, {
-      signal: controller.signal,
-      headers: { Accept: 'application/json' },
-    });
+    const response = await fetchImpl(
+      `${apiBase.replace(/\/+$/, '')}/config/public`,
+      {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      }
+    );
     if (!response.ok) return null;
     const body: unknown = await response.json();
-    return body !== null && typeof body === 'object' ? (body as PublicConfig) : null;
+    return body !== null && typeof body === 'object'
+      ? (body as PublicConfig)
+      : null;
   } catch {
     return null;
   } finally {

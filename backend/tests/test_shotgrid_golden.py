@@ -52,4 +52,6 @@ def test_packaged_profile_reproduces_the_original_field_mapping():
     assert mapping == golden
     for kind in golden:  # key order is the order fields are requested in
         assert list(mapping[kind]["fields"]) == list(golden[kind]["fields"])
-        assert list(mapping[kind]["linked_fields"]) == list(golden[kind]["linked_fields"])
+        assert list(mapping[kind]["linked_fields"]) == list(
+            golden[kind]["linked_fields"]
+        )

@@ -162,7 +162,10 @@ def test_effective_masks_secrets_but_get_returns_real_value():
     assert effective["auth"]["jwt"]["secret_key"] == "********"
     assert "s3cret" not in repr(effective)
     assert cfg.get("prodtrack").shotgrid.api_key == "s3cret"
-    assert cfg.effective(mask_secrets=False)["prodtrack"]["shotgrid"]["api_key"] == "s3cret"
+    assert (
+        cfg.effective(mask_secrets=False)["prodtrack"]["shotgrid"]["api_key"]
+        == "s3cret"
+    )
 
 
 def test_unset_secret_is_none_not_a_mask():
@@ -186,7 +189,9 @@ def test_all_problems_are_reported_together_with_their_source():
     assert "auth.session.ttl_seconds" in paths
     assert "auth.jwt.access_token_minutes" in paths
     assert any("SECURE" in i.message for i in err.value.issues)
-    assert any(i.source == "SESSION_TTL_SECONDS" or "env" in i.source for i in err.value.issues)
+    assert any(
+        i.source == "SESSION_TTL_SECONDS" or "env" in i.source for i in err.value.issues
+    )
 
 
 def test_unknown_section_and_unknown_key_are_rejected(tmp_path):
@@ -201,9 +206,16 @@ def test_unknown_section_and_unknown_key_are_rejected(tmp_path):
 
 
 def test_site_type_other_than_onprem_means_cloud():
-    assert make({"SG_SITE_TYPE": "Cloud"}).get("prodtrack").shotgrid.site_type == "cloud"
-    assert make({"SG_SITE_TYPE": "OnPrem"}).get("prodtrack").shotgrid.site_type == "onprem"
-    assert make({"SG_SITE_TYPE": "whatever"}).get("prodtrack").shotgrid.site_type == "cloud"
+    assert (
+        make({"SG_SITE_TYPE": "Cloud"}).get("prodtrack").shotgrid.site_type == "cloud"
+    )
+    assert (
+        make({"SG_SITE_TYPE": "OnPrem"}).get("prodtrack").shotgrid.site_type == "onprem"
+    )
+    assert (
+        make({"SG_SITE_TYPE": "whatever"}).get("prodtrack").shotgrid.site_type
+        == "cloud"
+    )
 
 
 # ── runtime overrides ────────────────────────────────────────────────────────
@@ -233,7 +245,9 @@ def test_bootstrap_sections_cannot_be_changed_at_runtime():
         ("server", {"server": {"log_level": "debug"}}),
         ("admin", {"admin": {"admins": ["me@x.com"]}}),
     ):
-        with pytest.raises(ConfigError, match=f"'{section}' section cannot be changed at runtime"):
+        with pytest.raises(
+            ConfigError, match=f"'{section}' section cannot be changed at runtime"
+        ):
             cfg.apply_overrides(patch)
     assert cfg.get("auth").provider == "none" and cfg.version == 1  # nothing applied
     # ... but a trusted caller (bootstrap, tests) may:
@@ -243,11 +257,15 @@ def test_bootstrap_sections_cannot_be_changed_at_runtime():
 
 def test_dry_run_reports_without_applying():
     cfg = make()
-    result = cfg.apply_overrides({"features": {"transcript_publish": True}}, dry_run=True)
+    result = cfg.apply_overrides(
+        {"features": {"transcript_publish": True}}, dry_run=True
+    )
     assert result.changed == ["features.transcript_publish"]
     assert cfg.get("features").transcript_publish is False and cfg.version == 1
     with pytest.raises(ConfigError):  # a dry run validates just as hard
-        cfg.apply_overrides({"features": {"transcript_publish": "banana"}}, dry_run=True)
+        cfg.apply_overrides(
+            {"features": {"transcript_publish": "banana"}}, dry_run=True
+        )
 
 
 def test_replace_swaps_the_whole_override_set():
@@ -267,12 +285,12 @@ def test_failed_override_leaves_configuration_untouched():
 
 
 def test_plaintext_secret_override_is_refused_but_reference_accepted():
-    cfg = make({"VEXA": "x", "MY_KEY": "from-env"})
+    cfg = make({"VEXA": "x", "VEXA_API_KEY": "from-env"})
     with pytest.raises(ConfigError) as err:
         cfg.apply_overrides({"transcription": {"vexa": {"api_key": "plaintext"}}})
     assert "reference" in str(err.value)
 
-    cfg.apply_overrides({"transcription": {"vexa": {"api_key": "${env:MY_KEY}"}}})
+    cfg.apply_overrides({"transcription": {"vexa": {"api_key": "${env:VEXA_API_KEY}"}}})
     assert cfg.get("transcription").vexa.api_key == "from-env"
 
 
@@ -324,3 +342,89 @@ def test_schema_covers_every_section_and_flags_secrets():
     }
     api_key = schema["transcription"]["$defs"]["VexaConfig"]["properties"]["api_key"]
     assert api_key["secret"] is True and api_key["reload"] == "hot"
+
+
+# ── runtime references cannot read arbitrary server secrets ──────────────────
+
+
+def _runtime_change(env, patch, config_dir=None):
+    svc = make(env, config_dir=config_dir)
+    svc.apply_overrides(patch)
+    return svc
+
+
+def test_runtime_cannot_point_a_plain_setting_at_an_environment_variable():
+    with pytest.raises(ConfigError, match="only allowed on secret settings"):
+        _runtime_change(
+            {"TOP_SECRET": "x"}, {"prodtrack": {"ayon": {"url": "${env:TOP_SECRET}"}}}
+        )
+
+
+def test_runtime_cannot_reference_an_undeclared_variable_even_on_a_secret_setting():
+    with pytest.raises(ConfigError, match="cannot be referenced from runtime"):
+        _runtime_change(
+            {"JWT_SECRET": "x"},
+            {"prodtrack": {"ayon": {"api_key": "${env:JWT_SECRET}"}}},
+        )
+
+
+def test_runtime_cannot_read_files():
+    with pytest.raises(ConfigError, match="file references cannot be set at runtime"):
+        _runtime_change({}, {"prodtrack": {"ayon": {"api_key": "${file:/etc/passwd}"}}})
+
+
+def test_runtime_may_reference_the_variable_a_secret_setting_documents():
+    svc = _runtime_change(
+        {"AYON_API_KEY": "key-value"},
+        {"prodtrack": {"ayon": {"api_key": "${env:AYON_API_KEY}"}}},
+    )
+    assert svc.get("prodtrack").ayon.api_key == "key-value"
+
+
+def test_runtime_may_reuse_a_reference_the_operator_wrote_in_the_files(tmp_path):
+    (tmp_path / "site.yaml").write_text(
+        "prodtrack:\n  ayon:\n    api_key: ${env:STUDIO_AYON_KEY}\n"
+    )
+    svc = _runtime_change(
+        {"STUDIO_AYON_KEY": "k"},
+        {"llm": {"profiles": {"openai": {"api_key": "${env:STUDIO_AYON_KEY}"}}}},
+        config_dir=tmp_path,
+    )
+    assert svc.get("llm").profiles["openai"].api_key == "k"
+
+
+def test_a_rejected_reference_in_a_dry_run_changes_nothing():
+    svc = make({"TOP_SECRET": "x"})
+    with pytest.raises(ConfigError):
+        svc.apply_overrides(
+            {"prodtrack": {"ayon": {"url": "${env:TOP_SECRET}"}}}, dry_run=True
+        )
+    assert svc.get("prodtrack").ayon.url is None or "x" not in str(
+        svc.get("prodtrack").ayon.url
+    )
+
+
+# ── tracker URLs ─────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "file:///etc/passwd",
+        "ftp://ayon.test",
+        "gopher://ayon.test",
+        "//ayon.test",
+        "ayon.test:5000",
+        "http://user:pass@ayon.test",
+        "http://",
+    ],
+)
+@pytest.mark.parametrize("tracker", ["ayon", "shotgrid"])
+def test_a_tracker_url_must_be_a_plain_http_url(tracker, url):
+    with pytest.raises(ConfigError):
+        make({}, runtime={"prodtrack": {tracker: {"url": url}}})
+
+
+def test_a_tracker_url_is_tidied():
+    svc = make({}, runtime={"prodtrack": {"ayon": {"url": " http://ayon.test:5000/ "}}})
+    assert svc.get("prodtrack").ayon.url == "http://ayon.test:5000"

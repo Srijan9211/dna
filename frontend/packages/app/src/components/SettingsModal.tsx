@@ -400,8 +400,12 @@ function GeneralTab({
   const label = useLabels();
   const { data: access } = useConfigAccess();
   const { mode, setMode } = useThemeMode();
-  const { inReviewEnabled, setInReviewEnabled, inReviewLocked, inReviewLockReason } =
-    useFeatureFlags();
+  const {
+    inReviewEnabled,
+    setInReviewEnabled,
+    inReviewLocked,
+    inReviewLockReason,
+  } = useFeatureFlags();
 
   if (isLoading) {
     return (
@@ -432,7 +436,9 @@ function GeneralTab({
         <AppearanceRow>
           <KeybindingLabel>
             <KeybindingName>Enable In Review</KeybindingName>
-            <KeybindingDesc>Show In Review / Set In Review controls and the version indicator</KeybindingDesc>
+            <KeybindingDesc>
+              Show In Review / Set In Review controls and the version indicator
+            </KeybindingDesc>
           </KeybindingLabel>
           <LockableSwitch
             checked={inReviewEnabled}
@@ -461,9 +467,7 @@ function GeneralTab({
             disabled={isPending}
           />
           <CheckboxContent>
-            <CheckboxLabel>
-              Sync PT tab when version changes
-            </CheckboxLabel>
+            <CheckboxLabel>Sync PT tab when version changes</CheckboxLabel>
             <CheckboxDescription>
               When enabled (default), the extension updates your
               production-tracking tab whenever you select a different version.
@@ -481,7 +485,9 @@ function GeneralTab({
         </CheckboxContent>
         <RadioGroupRoot
           value={prodtrackPageType}
-          onValueChange={(v) => onProdtrackPageTypeChange(v as 'version' | 'entity')}
+          onValueChange={(v) =>
+            onProdtrackPageTypeChange(v as 'version' | 'entity')
+          }
         >
           <RadioItem>
             <RadioIndicator value="version" id="pt-version">
@@ -489,7 +495,9 @@ function GeneralTab({
             </RadioIndicator>
             <CheckboxContent>
               <CheckboxLabel>{label('version')} Detail</CheckboxLabel>
-              <CheckboxDescription>Open the version&apos;s detail page</CheckboxDescription>
+              <CheckboxDescription>
+                Open the version&apos;s detail page
+              </CheckboxDescription>
             </CheckboxContent>
           </RadioItem>
           <RadioItem>
@@ -497,8 +505,12 @@ function GeneralTab({
               <RadioDot />
             </RadioIndicator>
             <CheckboxContent>
-              <CheckboxLabel>{label('shot')} / {label('asset')} Detail</CheckboxLabel>
-              <CheckboxDescription>Open the linked shot or asset detail page</CheckboxDescription>
+              <CheckboxLabel>
+                {label('shot')} / {label('asset')} Detail
+              </CheckboxLabel>
+              <CheckboxDescription>
+                Open the linked shot or asset detail page
+              </CheckboxDescription>
             </CheckboxContent>
           </RadioItem>
         </RadioGroupRoot>
@@ -511,7 +523,8 @@ function GeneralTab({
             <KeybindingLabel>
               <KeybindingName>Configuration</KeybindingName>
               <KeybindingDesc>
-                Set up the production tracker, review settings and roll back changes
+                Set up the production tracker, review settings and roll back
+                changes
               </KeybindingDesc>
             </KeybindingLabel>
             <Button
@@ -519,7 +532,9 @@ function GeneralTab({
               onClick={() => {
                 const params = new URLSearchParams(window.location.search);
                 params.set('admin', 'config');
-                window.location.assign(`${window.location.pathname}?${params.toString()}`);
+                window.location.assign(
+                  `${window.location.pathname}?${params.toString()}`
+                );
               }}
             >
               Open
@@ -550,8 +565,8 @@ function KeybindingsTab({
     <ModalContent>
       <Section>
         <SectionDescription>
-          Click a shortcut to record a new key combination. Press Escape
-          to cancel.
+          Click a shortcut to record a new key combination. Press Escape to
+          cancel.
         </SectionDescription>
         {actions.map((action) => (
           <KeybindingRow key={action.id}>
@@ -602,8 +617,12 @@ function KeybindingsTab({
 // --- Transcription Tab ---
 
 function TranscriptionTab() {
-  const { transcriptionEnabled, setTranscriptionEnabled, transcriptionLocked, transcriptionLockReason } =
-    useFeatureFlags();
+  const {
+    transcriptionEnabled,
+    setTranscriptionEnabled,
+    transcriptionLocked,
+    transcriptionLockReason,
+  } = useFeatureFlags();
 
   return (
     <ModalContent>
@@ -820,17 +839,16 @@ function AITab({
           <Tooltip
             content={
               <>
-                Customize the prompt used when generating notes from
-                transcript and version information. You can include
-                the following tags in the prompt:
+                Customize the prompt used when generating notes from transcript
+                and version information. You can include the following tags in
+                the prompt:
                 <br />
                 <br />
                 {'{{ transcript }}'} - What was said on this version
                 <br />
                 {'{{ context }}'} - Includes context for the version
                 <br />
-                {'{{ notes }}'} - Any notes you took on this version
-                already
+                {'{{ notes }}'} - Any notes you took on this version already
                 <br />
                 {'{{ glossary_global }}'} - The global VFX glossary
                 <br />
@@ -844,8 +862,8 @@ function AITab({
           </Tooltip>
         </SectionTitle>
         <SectionDescription>
-          This prompt is used when generating notes via the transcript
-          and version information.
+          This prompt is used when generating notes via the transcript and
+          version information.
         </SectionDescription>
         <TextAreaWrapper>
           <StyledTextArea
@@ -863,12 +881,10 @@ function AITab({
             disabled={isPending}
           />
           <CheckboxContent>
-            <CheckboxLabel>
-              Regenerate notes on version change
-            </CheckboxLabel>
+            <CheckboxLabel>Regenerate notes on version change</CheckboxLabel>
             <CheckboxDescription>
-              Automatically regenerate the AI note when switching to a
-              different version in review.
+              Automatically regenerate the AI note when switching to a different
+              version in review.
             </CheckboxDescription>
           </CheckboxContent>
         </CheckboxRow>
@@ -880,13 +896,10 @@ function AITab({
             disabled={isPending}
           />
           <CheckboxContent>
-            <CheckboxLabel>
-              Regenerate on transcript update
-            </CheckboxLabel>
+            <CheckboxLabel>Regenerate on transcript update</CheckboxLabel>
             <CheckboxDescription>
-              Automatically regenerate the AI note when a new
-              transcript segment comes in or an existing segment is
-              updated.
+              Automatically regenerate the AI note when a new transcript segment
+              comes in or an existing segment is updated.
             </CheckboxDescription>
           </CheckboxContent>
         </CheckboxRow>
@@ -898,8 +911,8 @@ function AITab({
           <Tooltip
             content={
               <>
-                Glossaries are supplied to the AI as context whenever a
-                note is generated, helping it expand VFX shorthand and
+                Glossaries are supplied to the AI as context whenever a note is
+                generated, helping it expand VFX shorthand and
                 production-specific terms correctly.
               </>
             }
@@ -920,11 +933,7 @@ function AITab({
               in the open-source repo — open a PR to contribute.
             </CheckboxDescription>
           </GlossaryRowText>
-          <Button
-            asChild
-            variant="soft"
-            size="2"
-          >
+          <Button asChild variant="soft" size="2">
             <a
               href={GLOBAL_GLOSSARY_GITHUB_URL}
               target="_blank"
@@ -955,8 +964,7 @@ function formatKeysForDisplay(keys: string): string {
       if (p === 'meta')
         return navigator.platform.includes('Mac') ? '⌘' : 'Ctrl';
       if (p === 'shift') return '⇧';
-      if (p === 'alt')
-        return navigator.platform.includes('Mac') ? '⌥' : 'Alt';
+      if (p === 'alt') return navigator.platform.includes('Mac') ? '⌥' : 'Alt';
       if (p === 'ctrl') return 'Ctrl';
       if (p === 'down' || p === 'arrowdown') return '↓';
       if (p === 'up' || p === 'arrowup') return '↑';
@@ -1051,7 +1059,9 @@ export function SettingsModal({
   const [syncProdtrackTabOnVersionChange, setSyncProdtrackTabOnVersionChange] =
     useState(true);
   const [preferredModel, setPreferredModel] = useState('');
-  const [prodtrackPageType, setProdtrackPageType] = useState<'version' | 'entity'>('version');
+  const [prodtrackPageType, setProdtrackPageType] = useState<
+    'version' | 'entity'
+  >('version');
   const [isDirty, setIsDirty] = useState(false);
 
   const { getAllActions, getKeysForAction, setKeysForAction, resetToDefaults } =
@@ -1196,14 +1206,25 @@ export function SettingsModal({
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       {trigger && <Dialog.Trigger>{trigger}</Dialog.Trigger>}
-      <Dialog.Content maxWidth="600px" style={{ maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
+      <Dialog.Content
+        maxWidth="600px"
+        style={{ maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}
+      >
         <Dialog.Title>Settings</Dialog.Title>
         <Dialog.Description size="2" color="gray" mb="4">
           Configure your preferences for note generation, AI assistance, and
           keyboard shortcuts.
         </Dialog.Description>
 
-        <Tabs.Root defaultValue="general" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
+        <Tabs.Root
+          defaultValue="general"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+            flex: 1,
+          }}
+        >
           <StyledTabsList>
             <StyledTabsTrigger value="general">General</StyledTabsTrigger>
             <StyledTabsTrigger value="keybindings">
@@ -1215,11 +1236,22 @@ export function SettingsModal({
             <StyledTabsTrigger value="ai">AI</StyledTabsTrigger>
           </StyledTabsList>
 
-          <Tabs.Content value="general" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <Tabs.Content
+            value="general"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+            }}
+          >
             <TabsContentWrapper>
               <GeneralTab
                 isLoading={isLoading}
-                syncProdtrackTabOnVersionChange={syncProdtrackTabOnVersionChange}
+                syncProdtrackTabOnVersionChange={
+                  syncProdtrackTabOnVersionChange
+                }
                 prodtrackPageType={prodtrackPageType}
                 isPending={mutation.isPending}
                 onSyncProdtrackTabOnVersionChange={
@@ -1230,7 +1262,16 @@ export function SettingsModal({
             </TabsContentWrapper>
           </Tabs.Content>
 
-          <Tabs.Content value="keybindings" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <Tabs.Content
+            value="keybindings"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+            }}
+          >
             <TabsContentWrapper>
               <KeybindingsTab
                 actions={actions}
@@ -1241,13 +1282,31 @@ export function SettingsModal({
             </TabsContentWrapper>
           </Tabs.Content>
 
-          <Tabs.Content value="transcription" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <Tabs.Content
+            value="transcription"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+            }}
+          >
             <TabsContentWrapper>
               <TranscriptionTab />
             </TabsContentWrapper>
           </Tabs.Content>
 
-          <Tabs.Content value="ai" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <Tabs.Content
+            value="ai"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+            }}
+          >
             <TabsContentWrapper>
               <AITab
                 isLoading={isLoading}
@@ -1262,7 +1321,9 @@ export function SettingsModal({
                 onNotePromptChange={handleNotePromptChange}
                 onPreferredModelChange={handlePreferredModelChange}
                 onRegenerateOnVersionChange={handleRegenerateOnVersionChange}
-                onRegenerateOnTranscriptUpdate={handleRegenerateOnTranscriptUpdate}
+                onRegenerateOnTranscriptUpdate={
+                  handleRegenerateOnTranscriptUpdate
+                }
               />
             </TabsContentWrapper>
           </Tabs.Content>

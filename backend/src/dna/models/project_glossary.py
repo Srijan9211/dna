@@ -9,6 +9,7 @@ swaps the glossary the AI receives as context.
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
+
 from dna.models.ids import EntityId
 
 

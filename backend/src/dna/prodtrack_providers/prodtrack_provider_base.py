@@ -5,8 +5,8 @@ from datetime import date
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    from dna.models.entity import EntityBase, Playlist, Project, User, Version
     from dna.media_proxy import MediaStream
+    from dna.models.entity import EntityBase, Playlist, Project, User, Version
     from dna.prodtrack_providers.handshake import Check, TrackerSchema
     from dna.prodtrack_providers.profile import Capabilities, ConnectorProfile
 
@@ -57,7 +57,9 @@ class ProdtrackProviderBase:
     # cannot send.  DNA then serves them through its signed-URL media proxy.
     MEDIA_REQUIRES_PROXY = False
 
-    def open_media(self, version_id: Any, kind: str, range_header: "Optional[str]" = None) -> "MediaStream":
+    def open_media(
+        self, version_id: Any, kind: str, range_header: "Optional[str]" = None
+    ) -> "MediaStream":
         """Open a version's ``thumbnail`` or ``movie`` for streaming to the browser.
 
         Only connectors with ``MEDIA_REQUIRES_PROXY`` implement this.  ``range_header``
@@ -69,7 +71,9 @@ class ProdtrackProviderBase:
     # ── handshake hooks (see dna.prodtrack_providers.handshake) ───────────
 
     @classmethod
-    def for_handshake(cls, prodtrack_config: Any, profile: "ConnectorProfile") -> "ProdtrackProviderBase":
+    def for_handshake(
+        cls, prodtrack_config: Any, profile: "ConnectorProfile"
+    ) -> "ProdtrackProviderBase":
         """Build a provider for a *candidate* configuration, without touching the
         process-wide config.  ``prodtrack_config`` is a ``ProdtrackSection``."""
         return cls()

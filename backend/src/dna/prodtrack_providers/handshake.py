@@ -114,7 +114,9 @@ def _close(name: str, candidates: Iterable[str], n: int = 3) -> list[str]:
     return difflib.get_close_matches(name, sorted(candidates), n=n, cutoff=0.55)
 
 
-def validate_profile(profile: ConnectorProfile, schema: TrackerSchema) -> tuple[list[Check], list[Suggestion]]:
+def validate_profile(
+    profile: ConnectorProfile, schema: TrackerSchema
+) -> tuple[list[Check], list[Suggestion]]:
     """Check every entity binding in ``profile`` against what the tracker has.
 
     A mapping to a field the tracker does not have fails: DNA would request it and
@@ -129,14 +131,33 @@ def validate_profile(profile: ConnectorProfile, schema: TrackerSchema) -> tuple[
         source = binding.source
         if schema.known_entities and source not in schema.known_entities:
             options = _close(source, schema.known_entities)
-            checks.append(Check(label, "fail", f"{kind}: the tracker has no entity '{source}'", {"source": source, "closest": options}))
+            checks.append(
+                Check(
+                    label,
+                    "fail",
+                    f"{kind}: the tracker has no entity '{source}'",
+                    {"source": source, "closest": options},
+                )
+            )
             if options:
-                suggestions.append(Suggestion(f"entities.{kind}.source", f"no entity '{source}'", options,
-                                              {"entities": {kind: {"source": options[0]}}}))
+                suggestions.append(
+                    Suggestion(
+                        f"entities.{kind}.source",
+                        f"no entity '{source}'",
+                        options,
+                        {"entities": {kind: {"source": options[0]}}},
+                    )
+                )
             continue
         available = schema.entities.get(source)
         if available is None:
-            checks.append(Check(label, "skip", f"{kind}: fields of '{source}' not reported by the tracker"))
+            checks.append(
+                Check(
+                    label,
+                    "skip",
+                    f"{kind}: fields of '{source}' not reported by the tracker",
+                )
+            )
             continue
 
         problems: list[str] = []
@@ -149,11 +170,19 @@ def validate_profile(profile: ConnectorProfile, schema: TrackerSchema) -> tuple[
                 dna_name = names[tracker_field]
                 override = None
                 if options:
-                    override = {"entities": {kind: {group: {tracker_field: None, options[0]: dna_name}}}}
-                suggestions.append(Suggestion(
-                    f"entities.{kind}.{group}", f"'{source}' has no field '{tracker_field}' (maps to DNA '{dna_name}')",
-                    options, override,
-                ))
+                    override = {
+                        "entities": {
+                            kind: {group: {tracker_field: None, options[0]: dna_name}}
+                        }
+                    }
+                suggestions.append(
+                    Suggestion(
+                        f"entities.{kind}.{group}",
+                        f"'{source}' has no field '{tracker_field}' (maps to DNA '{dna_name}')",
+                        options,
+                        override,
+                    )
+                )
         wanted_types = binding.where.get("folderType") or []
         if wanted_types and schema.folder_types:
             missing = [t for t in wanted_types if t not in schema.folder_types]
@@ -162,15 +191,32 @@ def validate_profile(profile: ConnectorProfile, schema: TrackerSchema) -> tuple[
                 problems.append(f"folder type '{folder_type}'")
                 override = None
                 if options:  # a list is replaced whole, so send the corrected list
-                    fixed = [t if t in schema.folder_types else options[0] for t in wanted_types]
+                    fixed = [
+                        t if t in schema.folder_types else options[0]
+                        for t in wanted_types
+                    ]
                     override = {"entities": {kind: {"where": {"folderType": fixed}}}}
-                suggestions.append(Suggestion(f"entities.{kind}.where.folderType",
-                                              f"no folder type '{folder_type}'",
-                                              options or sorted(schema.folder_types), override))
+                suggestions.append(
+                    Suggestion(
+                        f"entities.{kind}.where.folderType",
+                        f"no folder type '{folder_type}'",
+                        options or sorted(schema.folder_types),
+                        override,
+                    )
+                )
         if problems:
-            checks.append(Check(label, "fail", f"{kind}: not found in the tracker: {', '.join(problems)}", {"problems": problems}))
+            checks.append(
+                Check(
+                    label,
+                    "fail",
+                    f"{kind}: not found in the tracker: {', '.join(problems)}",
+                    {"problems": problems},
+                )
+            )
         else:
-            checks.append(Check(label, "ok", f"{kind}: '{source}' and its mapped fields exist"))
+            checks.append(
+                Check(label, "ok", f"{kind}: '{source}' and its mapped fields exist")
+            )
     return checks, suggestions
 
 
@@ -197,8 +243,13 @@ def run_handshake(
             versions (read-only).
     """
     report = HandshakeReport(connector=connector, contract=profile.contract)
-    report.add("describe", "ok", f"{profile.display_name or connector} profile is valid",
-               roles=profile.roles, labels=profile.labels)
+    report.add(
+        "describe",
+        "ok",
+        f"{profile.display_name or connector} profile is valid",
+        roles=profile.roles,
+        labels=profile.labels,
+    )
     report.capabilities = profile.capabilities.model_dump()
 
     try:
@@ -213,7 +264,11 @@ def run_handshake(
     except NotImplementedError:
         report.add("connect", "skip", "this connector cannot test its connection")
     except Exception as exc:
-        report.add("connect", "fail", f"cannot reach or authenticate with the tracker: {_clean(exc)}")
+        report.add(
+            "connect",
+            "fail",
+            f"cannot reach or authenticate with the tracker: {_clean(exc)}",
+        )
         return report
     else:
         report.add("connect", "ok", "connected and authenticated", **(info or {}))
@@ -223,12 +278,18 @@ def run_handshake(
     try:
         schema = provider.discover_schema()
     except NotImplementedError:
-        report.add("discover", "skip", "this connector cannot read its tracker's schema")
+        report.add(
+            "discover", "skip", "this connector cannot read its tracker's schema"
+        )
     except Exception as exc:
-        report.add("discover", "fail", f"could not read the tracker's schema: {_clean(exc)}")
+        report.add(
+            "discover", "fail", f"could not read the tracker's schema: {_clean(exc)}"
+        )
     else:
         report.schema = schema.summary()
-        report.add("discover", "ok", f"read the schema of {schema.version or 'the tracker'}")
+        report.add(
+            "discover", "ok", f"read the schema of {schema.version or 'the tracker'}"
+        )
 
     # validate + suggest
     if schema is not None:
@@ -261,14 +322,24 @@ def _smoke(provider: Any, email: str) -> Check:
             if versions:
                 break
     except Exception as exc:
-        return Check("smoke", "fail", f"the read path failed for {email}: {_clean(exc)}")
+        return Check(
+            "smoke", "fail", f"the read path failed for {email}: {_clean(exc)}"
+        )
     if not projects:
         return Check("smoke", "warn", f"{email} has no projects")
     if not versions:
-        return Check("smoke", "warn", f"{email} sees {len(projects)} project(s) but no playlist with versions yet",
-                     {"projects": len(projects), "playlists": playlists})
-    return Check("smoke", "ok", f"read {versions} version(s) through the full path",
-                 {"projects": len(projects), "playlists": playlists, "versions": versions})
+        return Check(
+            "smoke",
+            "warn",
+            f"{email} sees {len(projects)} project(s) but no playlist with versions yet",
+            {"projects": len(projects), "playlists": playlists},
+        )
+    return Check(
+        "smoke",
+        "ok",
+        f"read {versions} version(s) through the full path",
+        {"projects": len(projects), "playlists": playlists, "versions": versions},
+    )
 
 
 def _clean(exc: Exception) -> str:
@@ -305,5 +376,8 @@ def check_candidate(
     profile = load_profile(pt.connector, path=pt.profile_path, overrides=pt.profile)
     provider_cls = providers.prodtrack.resolve(pt.connector)
     return run_handshake(
-        pt.connector, profile, lambda p: provider_cls.for_handshake(pt, p), smoke_email=smoke_email
+        pt.connector,
+        profile,
+        lambda p: provider_cls.for_handshake(pt, p),
+        smoke_email=smoke_email,
     )

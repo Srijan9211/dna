@@ -62,13 +62,18 @@ def cmd_show(args: argparse.Namespace) -> int:
     data: dict[str, Any] = cfg.effective()
     if args.section:
         if args.section not in data:
-            print(f"Unknown section '{args.section}'. Sections: {', '.join(data)}", file=sys.stderr)
+            print(
+                f"Unknown section '{args.section}'. Sections: {', '.join(data)}",
+                file=sys.stderr,
+            )
             return 1
         data = {args.section: data[args.section]}
     out: dict[str, Any] = {"config": data}
     if args.provenance:
         prefix = f"{args.section}." if args.section else ""
-        out["provenance"] = {k: v for k, v in cfg.provenance().items() if k.startswith(prefix)}
+        out["provenance"] = {
+            k: v for k, v in cfg.provenance().items() if k.startswith(prefix)
+        }
     print(yaml.safe_dump(out, sort_keys=False, default_flow_style=False).rstrip())
     return 0
 
@@ -106,8 +111,12 @@ def cmd_handshake(args: argparse.Namespace) -> int:
             return 1
         if not _need_persistence():
             return 1
-        result = configsys.apply_overrides(candidate, actor=_actor(), note="handshake (cli)")
-        print(f"Saved as revision {result.version}; changed: {', '.join(result.changed) or 'nothing'}")
+        result = configsys.apply_overrides(
+            candidate, actor=_actor(), note="handshake (cli)"
+        )
+        print(
+            f"Saved as revision {result.version}; changed: {', '.join(result.changed) or 'nothing'}"
+        )
     return 0 if report.ok else 1
 
 
@@ -115,8 +124,14 @@ def cmd_history(_: argparse.Namespace) -> int:
     if not _need_persistence():
         return 1
     for rev in configsys.history(50):
-        when = __import__("datetime").datetime.fromtimestamp(rev.at).isoformat(timespec="seconds")
-        print(f"v{rev.version:<4} {when}  {rev.actor:<24} {rev.note or '-'}  [{', '.join(rev.changed)}]")
+        when = (
+            __import__("datetime")
+            .datetime.fromtimestamp(rev.at)
+            .isoformat(timespec="seconds")
+        )
+        print(
+            f"v{rev.version:<4} {when}  {rev.actor:<24} {rev.note or '-'}  [{', '.join(rev.changed)}]"
+        )
     return 0
 
 
@@ -137,7 +152,9 @@ def cmd_import(args: argparse.Namespace) -> int:
     with open(args.file, encoding="utf-8") as fh:
         document = yaml.safe_load(fh)
     result = configsys.import_overrides(document, actor=_actor())
-    print(f"Imported as revision {result.version}; changed: {', '.join(result.changed) or 'nothing'}")
+    print(
+        f"Imported as revision {result.version}; changed: {', '.join(result.changed) or 'nothing'}"
+    )
     return 0
 
 
@@ -150,20 +167,38 @@ def cmd_rollback(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="dna.config_cli", description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(
+        prog="dna.config_cli", description=__doc__.split("\n\n")[0]
+    )
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("validate", help="load and validate the configuration").set_defaults(func=cmd_validate)
-    p = sub.add_parser("show", help="print the effective configuration (secrets masked)")
+    sub.add_parser("validate", help="load and validate the configuration").set_defaults(
+        func=cmd_validate
+    )
+    p = sub.add_parser(
+        "show", help="print the effective configuration (secrets masked)"
+    )
     p.add_argument("--section")
-    p.add_argument("--provenance", action="store_true", help="show where each value came from")
+    p.add_argument(
+        "--provenance", action="store_true", help="show where each value came from"
+    )
     p.set_defaults(func=cmd_show)
-    p = sub.add_parser("handshake", help="check the tracker configuration against the real tracker")
-    p.add_argument("--candidate", help="YAML file of overrides to try (not applied unless --apply)")
-    p.add_argument("--smoke-email", help="also walk this user's projects, playlists and versions")
-    p.add_argument("--apply", action="store_true", help="save the candidate if every check passes")
+    p = sub.add_parser(
+        "handshake", help="check the tracker configuration against the real tracker"
+    )
+    p.add_argument(
+        "--candidate", help="YAML file of overrides to try (not applied unless --apply)"
+    )
+    p.add_argument(
+        "--smoke-email", help="also walk this user's projects, playlists and versions"
+    )
+    p.add_argument(
+        "--apply", action="store_true", help="save the candidate if every check passes"
+    )
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_handshake)
-    sub.add_parser("history", help="list recorded changes").set_defaults(func=cmd_history)
+    sub.add_parser("history", help="list recorded changes").set_defaults(
+        func=cmd_history
+    )
     p = sub.add_parser("export", help="write the runtime overrides to a file")
     p.add_argument("-o", "--output")
     p.set_defaults(func=cmd_export)

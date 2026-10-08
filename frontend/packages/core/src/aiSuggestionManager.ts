@@ -47,7 +47,10 @@ export class AISuggestionManager {
     this.debounceMs = options.debounceMs ?? 1000;
   }
 
-  private getState(playlistId: EntityId, versionId: EntityId): AISuggestionState {
+  private getState(
+    playlistId: EntityId,
+    versionId: EntityId
+  ): AISuggestionState {
     const key = buildKey(playlistId, versionId);
     let state = this.states.get(key);
     if (!state) {

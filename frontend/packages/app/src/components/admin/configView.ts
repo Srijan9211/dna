@@ -25,7 +25,8 @@ export function flattenConfig(section: string, values: unknown): ConfigRow[] {
   const rows: ConfigRow[] = [];
   const walk = (node: unknown, prefix: string) => {
     if (isRecord(node) && Object.keys(node).length > 0) {
-      for (const [key, child] of Object.entries(node)) walk(child, `${prefix}.${key}`);
+      for (const [key, child] of Object.entries(node))
+        walk(child, `${prefix}.${key}`);
     } else {
       rows.push({ path: prefix, value: show(node) });
     }

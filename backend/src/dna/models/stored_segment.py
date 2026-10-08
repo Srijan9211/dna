@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
 from dna.models.ids import EntityId
 
 

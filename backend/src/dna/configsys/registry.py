@@ -14,7 +14,9 @@ from typing import Any, Optional
 from dna.configsys.meta import Section, iter_fields, meta
 
 # (path relative to the section, value, env var name) for provenance.
-LegacyEnvHook = Callable[[Mapping[str, str]], Iterable[tuple[tuple[str, ...], Any, str]]]
+LegacyEnvHook = Callable[
+    [Mapping[str, str]], Iterable[tuple[tuple[str, ...], Any, str]]
+]
 
 
 @dataclass(frozen=True)

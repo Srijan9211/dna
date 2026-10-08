@@ -19,6 +19,8 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
+import re
 import secrets
 import time
 from dataclasses import dataclass
@@ -50,7 +52,41 @@ def _unb64(text: str) -> bytes:
 
 
 def _key(secret: Optional[str]) -> bytes:
-    return secret.encode("utf-8") if secret else _EPHEMERAL_KEY
+    """The signing key: derived from the JWT secret for this purpose only, so a media
+    link's signature can never double as (or be confused with) another token's."""
+    if not secret:
+        return _EPHEMERAL_KEY
+    return hmac.new(
+        secret.encode("utf-8"), b"dna.media-proxy.v1", hashlib.sha256
+    ).digest()
+
+
+def has_stable_key(secret: Optional[str]) -> bool:
+    """False when links are signed with a per-process key (they then break across
+    restarts and across worker processes)."""
+    return bool(secret)
+
+
+_TOKEN_IN_URL = re.compile(r"([?&]token=)[^&\s\"]+")
+
+
+def _redact(match: "re.Match[str]") -> str:
+    return f"{match.group(1)}***"
+
+
+class RedactTokens(logging.Filter):
+    """Keep signed media tokens out of access logs (they travel in the query string
+    because ``<img>``/``<video>`` cannot send a header)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                _TOKEN_IN_URL.sub(_redact, a) if isinstance(a, str) else a
+                for a in record.args
+            )
+        if isinstance(record.msg, str):
+            record.msg = _TOKEN_IN_URL.sub(_redact, record.msg)
+        return True
 
 
 def sign_token(
@@ -70,7 +106,9 @@ def sign_token(
         "u": login,
         "exp": int((now if now is not None else time.time()) + ttl),
     }
-    body = _b64(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    body = _b64(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
     signature = hmac.new(_key(secret), body.encode("ascii"), hashlib.sha256).digest()
     return f"{body}.{_b64(signature)}"
 

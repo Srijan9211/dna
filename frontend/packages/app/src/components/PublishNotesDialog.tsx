@@ -34,7 +34,13 @@ import {
   type LocalDraftNote,
 } from '../hooks/useDraftNote';
 import { useNoteQCChecks } from '../hooks/useNoteQCChecks';
-import { DraftNote, Version, SearchResult, NoteQCResult, type EntityId } from '@dna/core';
+import {
+  DraftNote,
+  Version,
+  SearchResult,
+  NoteQCResult,
+  type EntityId,
+} from '@dna/core';
 import { NoteEditor, NoteDraftStatusBadges } from './NoteEditor';
 import { UserAvatar } from './UserAvatar';
 import { NoteQCResultPill } from './NoteQCResultPill';
@@ -777,10 +783,12 @@ export const PublishNotesTabContent: React.FC<PublishNotesTabContentProps> = ({
   >({});
   // Explicit user overrides for the per-version status rows; effective values
   // fall back to the pending status from draft notes, then the version itself.
-  const [statusSelected, setStatusSelected] = useState<Record<EntityId, boolean>>(
+  const [statusSelected, setStatusSelected] = useState<
+    Record<EntityId, boolean>
+  >({});
+  const [statusValues, setStatusValues] = useState<Record<EntityId, string>>(
     {}
   );
-  const [statusValues, setStatusValues] = useState<Record<EntityId, string>>({});
   const [successSummary, setSuccessSummary] = useState<{
     publishedCount: number;
     republishedCount: number;

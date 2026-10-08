@@ -44,7 +44,6 @@ from dna.models.entity import (
     Version,
 )
 from dna.prodtrack_providers.mapper import ProfileMapper
-from dna.prodtrack_providers.profile import ConnectorProfile, load_profile
 from dna.prodtrack_providers.prodtrack_provider_base import (
     ProdtrackAuthError,
     ProdtrackPermissionError,
@@ -52,6 +51,8 @@ from dna.prodtrack_providers.prodtrack_provider_base import (
     ProdtrackUnavailableError,
     UserNotFoundError,
 )
+from dna.prodtrack_providers.profile import ConnectorProfile, load_profile
+
 
 class _NoteAdapter(Section):
     """ShotGrid Note field names that are not DNA fields."""
@@ -91,9 +92,7 @@ def _shotgrid_profile() -> ConnectorProfile:
     active connector (so studio overrides apply), else the packaged default."""
     cfg = get_config().get("prodtrack")
     if cfg.connector == "shotgrid":
-        return load_profile(
-            "shotgrid", path=cfg.profile_path, overrides=cfg.profile
-        )
+        return load_profile("shotgrid", path=cfg.profile_path, overrides=cfg.profile)
     return load_profile("shotgrid")
 
 
@@ -277,8 +276,7 @@ class ShotgridProvider(ProdtrackProviderBase):
             entity_data = self.mapper.entity_data(entity_type, sg_entity, resolve)
         else:  # an explicit legacy-shaped mapping dict
             entity_data = {
-                dna: sg_entity.get(sg)
-                for sg, dna in entity_mapping["fields"].items()
+                dna: sg_entity.get(sg) for sg, dna in entity_mapping["fields"].items()
             }
             for sg, dna in entity_mapping.get("linked_fields", {}).items():
                 entity_data[dna] = resolve(sg_entity.get(sg))
@@ -596,7 +594,13 @@ class ShotgridProvider(ProdtrackProviderBase):
         author_email_field = self.adapter.note.author_email_field
         sg_notes = self._sg.find(
             m.source("note"),
-            filters=[[note_links_field, "is", {"type": m.source("playlist"), "id": playlist_id}]],
+            filters=[
+                [
+                    note_links_field,
+                    "is",
+                    {"type": m.source("playlist"), "id": playlist_id},
+                ]
+            ],
             fields=[
                 m.tracker_field("note", "id"),
                 m.tracker_field("note", "subject"),
@@ -613,10 +617,9 @@ class ShotgridProvider(ProdtrackProviderBase):
             dna_note = self._convert_sg_entity_to_dna_entity(
                 sg_note, None, "note", resolve_links=False
             )
-            if (
-                sg_note.get(author_field)
-                and sg_note[author_field].get("type") == m.source("user")
-            ):
+            if sg_note.get(author_field) and sg_note[author_field].get(
+                "type"
+            ) == m.source("user"):
                 email = sg_note.get(author_email_field)
                 if email and dna_note.author:
                     dna_note.author.email = email
@@ -796,7 +799,9 @@ class ShotgridProvider(ProdtrackProviderBase):
         )
         if existing:
             if version_status:
-                self._sg.update(version_source, version_id, {status_field: version_status})
+                self._sg.update(
+                    version_source, version_id, {status_field: version_status}
+                )
             return existing["id"]
 
         note_links = [version_link]
@@ -869,7 +874,9 @@ class ShotgridProvider(ProdtrackProviderBase):
     # ── handshake ─────────────────────────────────────────────────────── #
 
     @classmethod
-    def for_handshake(cls, prodtrack_config: Any, profile: ConnectorProfile) -> "ShotgridProvider":
+    def for_handshake(
+        cls, prodtrack_config: Any, profile: ConnectorProfile
+    ) -> "ShotgridProvider":
         sg = prodtrack_config.shotgrid
         return cls(
             url=sg.url,
@@ -911,7 +918,10 @@ class ShotgridProvider(ProdtrackProviderBase):
         except Exception:
             statuses = []
         return TrackerSchema(
-            version="ShotGrid", entities=entities, known_entities=known, statuses=statuses
+            version="ShotGrid",
+            entities=entities,
+            known_entities=known,
+            statuses=statuses,
         )
 
     def adapter_issues(self, schema: "TrackerSchema") -> "list[Check]":
@@ -922,37 +932,72 @@ class ShotgridProvider(ProdtrackProviderBase):
         version_fields = schema.entities.get(version_source)
         if version_fields is not None:
             ok = self.adapter.status_field in version_fields
-            checks.append(Check(
-                "adapter.status_field",
-                "ok" if ok else "fail",
-                f"status field '{self.adapter.status_field}' "
-                + ("exists on " if ok else "is missing from ") + version_source,
-            ))
+            checks.append(
+                Check(
+                    "adapter.status_field",
+                    "ok" if ok else "fail",
+                    f"status field '{self.adapter.status_field}' "
+                    + ("exists on " if ok else "is missing from ")
+                    + version_source,
+                )
+            )
         note_source = self.mapper.source("note")
         note_fields = schema.entities.get(note_source)
         if note_fields is not None:
-            wanted = [self.adapter.note.to_field, self.adapter.note.cc_field, self.adapter.note.attachments_field]
+            wanted = [
+                self.adapter.note.to_field,
+                self.adapter.note.cc_field,
+                self.adapter.note.attachments_field,
+            ]
             missing = [f for f in wanted if f not in note_fields]
-            checks.append(Check(
-                "adapter.note",
-                "fail" if missing else "ok",
-                f"note fields missing from {note_source}: {missing}" if missing else f"note recipient and attachment fields exist on {note_source}",
-            ))
+            checks.append(
+                Check(
+                    "adapter.note",
+                    "fail" if missing else "ok",
+                    (
+                        f"note fields missing from {note_source}: {missing}"
+                        if missing
+                        else f"note recipient and attachment fields exist on {note_source}"
+                    ),
+                )
+            )
         transcript_entity = self.transcript_entity_type()
         if schema.known_entities and transcript_entity not in schema.known_entities:
-            checks.append(Check(
-                "adapter.transcript", "warn",
-                f"transcript entity '{transcript_entity}' does not exist; transcript publishing will fail until it is enabled",
-            ))
+            checks.append(
+                Check(
+                    "adapter.transcript",
+                    "warn",
+                    f"transcript entity '{transcript_entity}' does not exist; transcript publishing will fail until it is enabled",
+                )
+            )
         elif transcript_entity in schema.entities:
             fields = schema.entities[transcript_entity]
             t = self.adapter.transcript
-            missing = [f for f in (t.code, t.project, t.playlist, t.version, t.meeting_id, t.meeting_date, t.platform, t.body) if f not in fields]
-            checks.append(Check(
-                "adapter.transcript",
-                "warn" if missing else "ok",
-                f"{transcript_entity} lacks fields {missing}" if missing else f"{transcript_entity} has every transcript field",
-            ))
+            missing = [
+                f
+                for f in (
+                    t.code,
+                    t.project,
+                    t.playlist,
+                    t.version,
+                    t.meeting_id,
+                    t.meeting_date,
+                    t.platform,
+                    t.body,
+                )
+                if f not in fields
+            ]
+            checks.append(
+                Check(
+                    "adapter.transcript",
+                    "warn" if missing else "ok",
+                    (
+                        f"{transcript_entity} lacks fields {missing}"
+                        if missing
+                        else f"{transcript_entity} has every transcript field"
+                    ),
+                )
+            )
         return checks
 
     def publish_transcript(
@@ -1012,6 +1057,7 @@ class ShotgridProvider(ProdtrackProviderBase):
             return True
         except Exception:
             return False
+
 
 def _get_dna_entity_type(sg_entity_type: str) -> str:
     for entity_type, entity_data in FIELD_MAPPING.items():

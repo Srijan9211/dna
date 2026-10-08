@@ -108,7 +108,9 @@ class ConnectorProfile(Section):
     def _known_kinds(cls, v: dict[str, EntityBinding]) -> dict[str, EntityBinding]:
         unknown = sorted(set(v) - set(KINDS))
         if unknown:
-            raise ValueError(f"unknown entity kind(s) {unknown}; valid kinds: {list(KINDS)}")
+            raise ValueError(
+                f"unknown entity kind(s) {unknown}; valid kinds: {list(KINDS)}"
+            )
         return v
 
     @model_validator(mode="after")
@@ -118,7 +120,9 @@ class ConnectorProfile(Section):
                 raise ValueError(f"unknown role '{role}'; valid roles: {list(ROLES)}")
             missing = [k for k in kinds if k not in self.entities]
             if missing:
-                raise ValueError(f"role '{role}' lists kinds with no binding: {missing}")
+                raise ValueError(
+                    f"role '{role}' lists kinds with no binding: {missing}"
+                )
         by_source: dict[str, list[str]] = {}
         for kind, binding in self.entities.items():
             by_source.setdefault(binding.source, []).append(kind)
@@ -213,4 +217,6 @@ def _load_cached(
         problems = "; ".join(
             f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()
         )
-        raise ValueError(f"Invalid connector profile for '{connector}': {problems}") from exc
+        raise ValueError(
+            f"Invalid connector profile for '{connector}': {problems}"
+        ) from exc

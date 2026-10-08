@@ -45,8 +45,8 @@ export function HistoryPanel() {
   if (data.length === 0) {
     return (
       <Text size="2" color="gray">
-        No changes have been saved yet. Every change you save here is recorded with your
-        name and can be undone.
+        No changes have been saved yet. Every change you save here is recorded
+        with your name and can be undone.
       </Text>
     );
   }
@@ -88,7 +88,9 @@ export function HistoryPanel() {
                 <Flex direction="column">
                   {rev.note && <Text size="2">{rev.note}</Text>}
                   <Text size="1" color="gray">
-                    {rev.changed.length > 0 ? rev.changed.join(', ') : 'no setting changed'}
+                    {rev.changed.length > 0
+                      ? rev.changed.join(', ')
+                      : 'no setting changed'}
                   </Text>
                 </Flex>
               </Table.Cell>
@@ -96,15 +98,23 @@ export function HistoryPanel() {
                 {rev.version !== latest && (
                   <AlertDialog.Root>
                     <AlertDialog.Trigger>
-                      <Button size="1" variant="soft" color="gray" aria-label={`Roll back to revision ${rev.version}`}>
+                      <Button
+                        size="1"
+                        variant="soft"
+                        color="gray"
+                        aria-label={`Roll back to revision ${rev.version}`}
+                      >
                         Roll back to this
                       </Button>
                     </AlertDialog.Trigger>
                     <AlertDialog.Content maxWidth="440px">
-                      <AlertDialog.Title>Roll back to revision {rev.version}?</AlertDialog.Title>
+                      <AlertDialog.Title>
+                        Roll back to revision {rev.version}?
+                      </AlertDialog.Title>
                       <AlertDialog.Description size="2">
-                        The configuration returns to how it was then. This is saved as a
-                        new revision, so nothing is lost and you can undo it again.
+                        The configuration returns to how it was then. This is
+                        saved as a new revision, so nothing is lost and you can
+                        undo it again.
                       </AlertDialog.Description>
                       <Flex gap="3" mt="4" justify="end">
                         <AlertDialog.Cancel>
@@ -113,7 +123,9 @@ export function HistoryPanel() {
                           </Button>
                         </AlertDialog.Cancel>
                         <AlertDialog.Action>
-                          <Button onClick={() => rollback.mutate(rev.version)}>Roll back</Button>
+                          <Button onClick={() => rollback.mutate(rev.version)}>
+                            Roll back
+                          </Button>
                         </AlertDialog.Action>
                       </Flex>
                     </AlertDialog.Content>

@@ -419,7 +419,9 @@ describe('ApiHandler', () => {
         ],
       });
 
-      const [version] = await api.getVersionsForPlaylist({ playlistId: 'demo:L1' });
+      const [version] = await api.getVersionsForPlaylist({
+        playlistId: 'demo:L1',
+      });
 
       expect(version.thumbnail).toBe(
         'https://dna.example/media/versions/demo:v1/thumbnail?token=T'
@@ -433,12 +435,18 @@ describe('ApiHandler', () => {
       const api = createApiHandler({ baseURL: 'https://dna.example' });
       mockAxiosInstance.get.mockResolvedValue({
         data: [
-          { id: 1, type: 'Version', thumbnail: 'https://s3.amazonaws.com/x?sig=1' },
+          {
+            id: 1,
+            type: 'Version',
+            thumbnail: 'https://s3.amazonaws.com/x?sig=1',
+          },
           { id: 2, type: 'Version' },
         ],
       });
 
-      const [signed, bare] = await api.getVersionsForPlaylist({ playlistId: 1 });
+      const [signed, bare] = await api.getVersionsForPlaylist({
+        playlistId: 1,
+      });
 
       expect(signed.thumbnail).toBe('https://s3.amazonaws.com/x?sig=1');
       expect(bare.thumbnail).toBeUndefined();
@@ -448,7 +456,13 @@ describe('ApiHandler', () => {
     it('works with a same-origin (empty) API base', async () => {
       const api = createApiHandler({ baseURL: '' });
       mockAxiosInstance.get.mockResolvedValue({
-        data: [{ id: 1, type: 'Version', thumbnail: '/media/versions/1/thumbnail?token=T' }],
+        data: [
+          {
+            id: 1,
+            type: 'Version',
+            thumbnail: '/media/versions/1/thumbnail?token=T',
+          },
+        ],
       });
       const [version] = await api.getVersionsForPlaylist({ playlistId: 1 });
       expect(version.thumbnail).toBe('/media/versions/1/thumbnail?token=T');
@@ -846,11 +860,16 @@ describe('ApiHandler', () => {
     it('asks /config/access whether the user may administer', async () => {
       mockAxiosInstance.get.mockResolvedValue({ data: { admin: true } });
       expect(await api().getConfigAccess()).toEqual({ admin: true });
-      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/config/access', undefined);
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith(
+        '/config/access',
+        undefined
+      );
     });
 
     it('validates a patch without applying it', async () => {
-      mockAxiosInstance.post.mockResolvedValue({ data: { valid: false, issues: [], changed: [], restart_required: [] } });
+      mockAxiosInstance.post.mockResolvedValue({
+        data: { valid: false, issues: [], changed: [], restart_required: [] },
+      });
       await api().validateConfig({ features: { transcript_publish: true } });
       expect(mockAxiosInstance.post).toHaveBeenCalledWith(
         '/config/validate',
@@ -860,8 +879,14 @@ describe('ApiHandler', () => {
     });
 
     it('saves a section with its note and the revision it was based on', async () => {
-      mockAxiosInstance.put.mockResolvedValue({ data: { revision: 3, changed: [], restart_required: [] } });
-      await api().updateConfigSection('llm', { provider: 'gemini' }, { note: 'switch', expectedVersion: 2 });
+      mockAxiosInstance.put.mockResolvedValue({
+        data: { revision: 3, changed: [], restart_required: [] },
+      });
+      await api().updateConfigSection(
+        'llm',
+        { provider: 'gemini' },
+        { note: 'switch', expectedVersion: 2 }
+      );
       expect(mockAxiosInstance.put).toHaveBeenCalledWith(
         '/config/llm',
         { values: { provider: 'gemini' }, note: 'switch', expected_version: 2 },
@@ -872,28 +897,55 @@ describe('ApiHandler', () => {
     it('defaults the note and expected version when none are given', async () => {
       mockAxiosInstance.put.mockResolvedValue({ data: {} });
       await api().updateConfigSection('llm', {});
-      expect(mockAxiosInstance.put.mock.calls[0][1]).toEqual({ values: {}, note: '', expected_version: null });
+      expect(mockAxiosInstance.put.mock.calls[0][1]).toEqual({
+        values: {},
+        note: '',
+        expected_version: null,
+      });
     });
 
     it('reads history with a limit and rolls back by version', async () => {
       mockAxiosInstance.get.mockResolvedValue({ data: [] });
       await api().getConfigHistory(10);
-      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/config/history', { params: { limit: 10 } });
-      mockAxiosInstance.post.mockResolvedValue({ data: { revision: 4, changed: [], restart_required: [] } });
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/config/history', {
+        params: { limit: 10 },
+      });
+      mockAxiosInstance.post.mockResolvedValue({
+        data: { revision: 4, changed: [], restart_required: [] },
+      });
       await api().rollbackConfig(2);
-      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/config/rollback/2', undefined, undefined);
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+        '/config/rollback/2',
+        undefined,
+        undefined
+      );
     });
 
     it('runs the handshake with sensible defaults and never applies unless asked', async () => {
-      mockAxiosInstance.post.mockResolvedValue({ data: { ok: true, checks: [], suggestions: [], applied: false } });
-      await api().runHandshake({ candidate: { prodtrack: { connector: 'ayon' } }, smoke_email: 'a@x.com' });
+      mockAxiosInstance.post.mockResolvedValue({
+        data: { ok: true, checks: [], suggestions: [], applied: false },
+      });
+      await api().runHandshake({
+        candidate: { prodtrack: { connector: 'ayon' } },
+        smoke_email: 'a@x.com',
+      });
       expect(mockAxiosInstance.post).toHaveBeenCalledWith(
         '/config/prodtrack/handshake',
-        { candidate: { prodtrack: { connector: 'ayon' } }, smoke_email: 'a@x.com', apply: false, note: '' },
+        {
+          candidate: { prodtrack: { connector: 'ayon' } },
+          smoke_email: 'a@x.com',
+          apply: false,
+          note: '',
+        },
         undefined
       );
       await api().runHandshake({});
-      expect(mockAxiosInstance.post.mock.calls[1][1]).toEqual({ candidate: {}, smoke_email: null, apply: false, note: '' });
+      expect(mockAxiosInstance.post.mock.calls[1][1]).toEqual({
+        candidate: {},
+        smoke_email: null,
+        apply: false,
+        note: '',
+      });
     });
   });
 });

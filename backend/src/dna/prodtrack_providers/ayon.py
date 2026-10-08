@@ -55,12 +55,12 @@ from dna.models.entity import (
 )
 from dna.prodtrack_providers.ayon_client import AyonClient, AyonNotFound
 from dna.prodtrack_providers.mapper import ProfileMapper
-from dna.prodtrack_providers.profile import ConnectorProfile, load_profile
 from dna.prodtrack_providers.prodtrack_provider_base import (
     ProdtrackAuthError,
     ProdtrackProviderBase,
     UserNotFoundError,
 )
+from dna.prodtrack_providers.profile import ConnectorProfile, load_profile
 
 # ── ids ──────────────────────────────────────────────────────────────────────
 
@@ -172,17 +172,23 @@ class AyonProvider(ProdtrackProviderBase):
     # ── handshake ─────────────────────────────────────────────────────────
 
     @classmethod
-    def for_handshake(cls, prodtrack_config: Any, profile: ConnectorProfile) -> "AyonProvider":
+    def for_handshake(
+        cls, prodtrack_config: Any, profile: ConnectorProfile
+    ) -> "AyonProvider":
         ayon = prodtrack_config.ayon
         return cls(
-            url=ayon.url, api_key=ayon.api_key, sudo_user=ayon.sudo_user, profile=profile
+            url=ayon.url,
+            api_key=ayon.api_key,
+            sudo_user=ayon.sudo_user,
+            profile=profile,
         )
 
     def check_connection(self) -> dict[str, Any]:
         info = self._service.rest("GET", "/api/info")
         me = self._service.rest("GET", "/api/users/me")  # proves the API key
         facts: dict[str, Any] = {
-            "server_version": (info.get("releaseInfo") or {}).get("version") or info.get("version"),
+            "server_version": (info.get("releaseInfo") or {}).get("version")
+            or info.get("version"),
             "service_user": me.get("name"),
         }
         # Prove the impersonation mechanism: ask who the server thinks we are while
@@ -208,22 +214,58 @@ class AyonProvider(ProdtrackProviderBase):
         data = self._service.graphql(
             "query { users(first: 20) { edges { node { name active } } } }"
         )
-        return [e["node"]["name"] for e in data.get("users", {}).get("edges", []) if e["node"].get("active", True)]
+        return [
+            e["node"]["name"]
+            for e in data.get("users", {}).get("edges", [])
+            if e["node"].get("active", True)
+        ]
 
     # Fields AYON's GraphQL schema offers for each entity DNA reads (AYON 1.x).
     _STATIC_FIELDS = {
         "project": {"name", "label", "code", "active"},
-        "folder": {"id", "name", "label", "folderType", "path", "status", "tags", "parentId"},
-        "task": {"id", "name", "label", "taskType", "status", "tags", "assignees", "folderId"},
-        "version": {"id", "name", "version", "status", "tags", "author", "createdAt", "updatedAt", "thumbnailId"},
+        "folder": {
+            "id",
+            "name",
+            "label",
+            "folderType",
+            "path",
+            "status",
+            "tags",
+            "parentId",
+        },
+        "task": {
+            "id",
+            "name",
+            "label",
+            "taskType",
+            "status",
+            "tags",
+            "assignees",
+            "folderId",
+        },
+        "version": {
+            "id",
+            "name",
+            "version",
+            "status",
+            "tags",
+            "author",
+            "createdAt",
+            "updatedAt",
+            "thumbnailId",
+        },
         "entityList": {"id", "label", "entityType", "createdAt", "updatedAt", "count"},
         "user": {"name", "active"},
         "activity": {"activityId", "body", "createdAt", "updatedAt", "activityType"},
     }
     # AYON attribute scope for each entity above.
     _ATTRIBUTE_SCOPE = {
-        "project": "project", "folder": "folder", "task": "task", "version": "version",
-        "entityList": "list", "user": "user",
+        "project": "project",
+        "folder": "folder",
+        "task": "task",
+        "version": "version",
+        "entityList": "list",
+        "user": "user",
     }
 
     def discover_schema(self) -> "TrackerSchema":
@@ -234,7 +276,11 @@ class AyonProvider(ProdtrackProviderBase):
         entities: dict[str, set[str]] = {}
         for entity, fields in self._STATIC_FIELDS.items():
             scope = self._ATTRIBUTE_SCOPE.get(entity)
-            attribs = {f"attrib.{a['name']}" for a in attributes if scope in (a.get("scope") or [])}
+            attribs = {
+                f"attrib.{a['name']}"
+                for a in attributes
+                if scope in (a.get("scope") or [])
+            }
             entities[entity] = set(fields) | attribs
 
         folder_types: set[str] = set()
@@ -246,7 +292,10 @@ class AyonProvider(ProdtrackProviderBase):
             folder_types |= {f["name"] for f in body.get("folderTypes", [])}
             task_types |= {t["name"] for t in body.get("taskTypes", [])}
             for status in body.get("statuses", []):
-                if "version" in (status.get("scope") or []) and status["name"] not in statuses:
+                if (
+                    "version" in (status.get("scope") or [])
+                    and status["name"] not in statuses
+                ):
                     statuses.append(status["name"])
         notes = []
         if not names:
@@ -265,8 +314,14 @@ class AyonProvider(ProdtrackProviderBase):
         )
 
     def _service_projects(self) -> list[str]:
-        data = self._service.graphql("query { projects { edges { node { name active } } } }")
-        return [e["node"]["name"] for e in data.get("projects", {}).get("edges", []) if e["node"].get("active", True)]
+        data = self._service.graphql(
+            "query { projects { edges { node { name active } } } }"
+        )
+        return [
+            e["node"]["name"]
+            for e in data.get("projects", {}).get("edges", [])
+            if e["node"].get("active", True)
+        ]
 
     # ── identity ──────────────────────────────────────────────────────────
 
@@ -301,7 +356,9 @@ class AyonProvider(ProdtrackProviderBase):
         try:
             author = self.get_user_by_email(author_email)
         except ValueError as exc:
-            raise UserNotFoundError(f"Author not found in AYON: {author_email}") from exc
+            raise UserNotFoundError(
+                f"Author not found in AYON: {author_email}"
+            ) from exc
         return self._service.acting_as(author.login)
 
     # ── users ─────────────────────────────────────────────────────────────
@@ -432,7 +489,9 @@ class AyonProvider(ProdtrackProviderBase):
         if not lists:
             raise ValueError(f"Playlist {make_id(project, list_id)} not found")
         edges = lists[0]["node"]["items"]["edges"]
-        return [e["entityId"] for e in sorted(edges, key=lambda e: e.get("position") or 0)]
+        return [
+            e["entityId"] for e in sorted(edges, key=lambda e: e.get("position") or 0)
+        ]
 
     # ── versions ──────────────────────────────────────────────────────────
 
@@ -444,11 +503,20 @@ class AyonProvider(ProdtrackProviderBase):
         return build_selection(paths)
 
     def _version_selection(self) -> str:
-        v_paths = ["id", "name", "version", "status", "author", "thumbnailId",
-                   "hasReviewables", *self.mapper.binding("version").fields]
+        v_paths = [
+            "id",
+            "name",
+            "version",
+            "status",
+            "author",
+            "thumbnailId",
+            "hasReviewables",
+            *self.mapper.binding("version").fields,
+        ]
         comment = (
-            "activities(activityTypes: [\"%s\"]) { edges { node { activityId body"
-            " createdAt author { %s } } } }" % (self.adapter.comment_activity_type, _USER_SELECTION)
+            'activities(activityTypes: ["%s"]) { edges { node { activityId body'
+            " createdAt author { %s } } } }"
+            % (self.adapter.comment_activity_type, _USER_SELECTION)
         )
         return (
             f"{build_selection(v_paths)} {comment}"
@@ -472,7 +540,9 @@ class AyonProvider(ProdtrackProviderBase):
 
     def _reviewables(self, project: str, version_uuid: str) -> list[dict]:
         try:
-            body = self._c.rest("GET", f"/api/projects/{project}/versions/{version_uuid}/reviewables")
+            body = self._c.rest(
+                "GET", f"/api/projects/{project}/versions/{version_uuid}/reviewables"
+            )
         except AyonNotFound:
             return []
         return body.get("reviewables", []) if isinstance(body, dict) else []
@@ -506,18 +576,26 @@ class AyonProvider(ProdtrackProviderBase):
             tasks=[],
         )
 
-    def _task_entity(self, project: str, task: dict, folder: Optional[EntityBase] = None) -> Task:
+    def _task_entity(
+        self, project: str, task: dict, folder: Optional[EntityBase] = None
+    ) -> Task:
         data = self.mapper.entity_data("task", task, lambda _: None)
         return Task(
             id=make_id(project, task["id"]),
             name=data.get("name"),
             status=data.get("status"),
-            pipeline_step={"type": "TaskType", "id": task.get("taskType"), "name": task.get("taskType")},
+            pipeline_step={
+                "type": "TaskType",
+                "id": task.get("taskType"),
+                "name": task.get("taskType"),
+            },
             project=self._project_ref(project),
             entity=folder,
         )
 
-    def _title(self, folder: Optional[dict], product: Optional[dict], version: dict) -> str:
+    def _title(
+        self, folder: Optional[dict], product: Optional[dict], version: dict
+    ) -> str:
         return self.adapter.version_name.format(
             folder=(folder or {}).get("name", ""),
             product=(product or {}).get("name", ""),
@@ -536,7 +614,11 @@ class AyonProvider(ProdtrackProviderBase):
         product = node.get("product") or {}
         folder = product.get("folder")
         subject = self._subject_entity(project, folder) if folder else None
-        task = self._task_entity(project, node["task"], subject) if node.get("task") else None
+        task = (
+            self._task_entity(project, node["task"], subject)
+            if node.get("task")
+            else None
+        )
         vid = make_id(project, node["id"])
         author = node.get("author")
         author_user = users.get(author) if author else None
@@ -547,7 +629,11 @@ class AyonProvider(ProdtrackProviderBase):
             description=data.get("description"),
             status=data.get("status"),
             user=(
-                {"type": "User", "id": author, "name": author_user.name if author_user else author}
+                {
+                    "type": "User",
+                    "id": author,
+                    "name": author_user.name if author_user else author,
+                }
                 if author
                 else None
             ),
@@ -562,7 +648,11 @@ class AyonProvider(ProdtrackProviderBase):
             notes=self._comments(project, vid, node, users_hint=users),
         )
         version.prodtrack_detail_url = self.mapper.url(
-            "version_detail", base=self.url, kind="version", entity_id=node["id"], project=project
+            "version_detail",
+            base=self.url,
+            kind="version",
+            entity_id=node["id"],
+            project=project,
         )
         if folder:
             version.prodtrack_entity_detail_url = self.mapper.url(
@@ -580,7 +670,9 @@ class AyonProvider(ProdtrackProviderBase):
         # Requires the AYON credentials; DNA's media proxy serves it to browsers.
         return f"{self.url}/api/projects/{project}/files/{reviewable['fileId']}/payload"
 
-    def open_media(self, version_id: Any, kind: str, range_header: Optional[str] = None) -> "MediaStream":
+    def open_media(
+        self, version_id: Any, kind: str, range_header: Optional[str] = None
+    ) -> "MediaStream":
         project, version_uuid = split_id(version_id)
         if kind == "thumbnail":
             path = f"/api/projects/{project}/versions/{version_uuid}/thumbnail"
@@ -592,11 +684,26 @@ class AyonProvider(ProdtrackProviderBase):
         else:
             raise ValueError(f"Unknown media kind '{kind}'")
         response = self._c.request(
-            "GET", path, headers={"Range": range_header} if range_header else None, stream=True
+            "GET",
+            path,
+            headers={"Range": range_header} if range_header else None,
+            stream=True,
         )
-        passed = ("content-type", "content-length", "content-range", "accept-ranges", "etag", "last-modified")
+        passed = (
+            "content-type",
+            "content-length",
+            "content-range",
+            "accept-ranges",
+            "etag",
+            "last-modified",
+        )
         headers = {k: v for k, v in response.headers.items() if k.lower() in passed}
-        return MediaStream(response.status_code, headers, response.iter_content(64 * 1024), response.close)
+        return MediaStream(
+            response.status_code,
+            headers,
+            response.iter_content(64 * 1024),
+            response.close,
+        )
 
     def _thumbnail_url(self, project: str, node: dict) -> Optional[str]:
         if not node.get("thumbnailId"):
@@ -638,7 +745,9 @@ class AyonProvider(ProdtrackProviderBase):
         self, project: str, version_id: str, node: dict, *, users_hint: dict[str, User]
     ) -> list[Note]:
         edges = (node.get("activities") or {}).get("edges", [])
-        nodes = sorted((e["node"] for e in edges), key=lambda a: a.get("createdAt") or "")
+        nodes = sorted(
+            (e["node"] for e in edges), key=lambda a: a.get("createdAt") or ""
+        )
         notes = []
         for activity in nodes:
             author = activity.get("author") or {}
@@ -652,7 +761,8 @@ class AyonProvider(ProdtrackProviderBase):
                     content=content,
                     project=self._project_ref(project),
                     note_links=[Version(id=version_id)],
-                    author=users_hint.get(login) or (self._user_entity(author) if login else None),
+                    author=users_hint.get(login)
+                    or (self._user_entity(author) if login else None),
                 )
             )
         return notes  # oldest first: the API layer treats later as newer
@@ -675,15 +785,21 @@ class AyonProvider(ProdtrackProviderBase):
         recipients = [str(u) for u in [*to_users, *cc_users] if u]
         if recipients:
             parts.append(
-                " ".join(self.adapter.mention_template.format(login=login) for login in recipients)
+                " ".join(
+                    self.adapter.mention_template.format(login=login)
+                    for login in recipients
+                )
             )
         return "\n\n".join(parts)
 
-    def _existing_comment(self, client: AyonClient, project: str, version_uuid: str, body: str) -> Optional[str]:
+    def _existing_comment(
+        self, client: AyonClient, project: str, version_uuid: str, body: str
+    ) -> Optional[str]:
         data = client.graphql(
             "query($project: String!, $ids: [String!]) { project(name: $project) {"
-            " versions(ids: $ids) { edges { node { activities(activityTypes: [\"%s\"]) {"
-            " edges { node { activityId body } } } } } } } }" % self.adapter.comment_activity_type,
+            ' versions(ids: $ids) { edges { node { activities(activityTypes: ["%s"]) {'
+            " edges { node { activityId body } } } } } } } }"
+            % self.adapter.comment_activity_type,
             {"project": project, "ids": [version_uuid]},
         )
         for v in data.get("project", {}).get("versions", {}).get("edges", []):
@@ -733,7 +849,11 @@ class AyonProvider(ProdtrackProviderBase):
         try:
             project, activity_id = split_id(note_id)
             body = self._compose_body(subject or "", content, [], [])
-            self._c.rest("PATCH", f"/api/projects/{project}/activities/{activity_id}", json={"body": body})
+            self._c.rest(
+                "PATCH",
+                f"/api/projects/{project}/activities/{activity_id}",
+                json={"body": body},
+            )
             if version_status and version_id:
                 self.update_version_status(version_id, version_status)
             return True
@@ -743,24 +863,38 @@ class AyonProvider(ProdtrackProviderBase):
     def update_version_status(self, version_id: Any, status: str) -> bool:
         try:
             project, version_uuid = split_id(version_id)
-            self._c.rest("PATCH", f"/api/projects/{project}/versions/{version_uuid}", json={"status": status})
+            self._c.rest(
+                "PATCH",
+                f"/api/projects/{project}/versions/{version_uuid}",
+                json={"status": status},
+            )
             return True
         except Exception:
             return False
 
     def get_version_statuses(self, project_id: Any = None) -> list[dict[str, str]]:
-        projects = [self._project_name(project_id)] if project_id else self._accessible_projects()
+        projects = (
+            [self._project_name(project_id)]
+            if project_id
+            else self._accessible_projects()
+        )
         seen: dict[str, dict[str, str]] = {}
         for project in projects:
             body = self._c.rest("GET", f"/api/projects/{project}")
             for status in body.get("statuses", []):
                 if "version" in (status.get("scope") or []):
-                    seen.setdefault(status["name"], {"code": status["name"], "name": status["name"]})
+                    seen.setdefault(
+                        status["name"], {"code": status["name"], "name": status["name"]}
+                    )
         return list(seen.values())
 
     def _accessible_projects(self) -> list[str]:
         data = self._c.graphql("query { projects { edges { node { name active } } } }")
-        return [e["node"]["name"] for e in data.get("projects", {}).get("edges", []) if e["node"].get("active", True)]
+        return [
+            e["node"]["name"]
+            for e in data.get("projects", {}).get("edges", [])
+            if e["node"].get("active", True)
+        ]
 
     # ── attachments and transcripts ───────────────────────────────────────
 
@@ -770,14 +904,22 @@ class AyonProvider(ProdtrackProviderBase):
             "POST",
             f"/api/projects/{project}/files",
             data=payload,
-            headers={"x-file-name": name, "content-type": mime, "X-Activity-ID": activity_id},
+            headers={
+                "x-file-name": name,
+                "content-type": mime,
+                "X-Activity-ID": activity_id,
+            },
         )
         return uploaded["id"]
 
-    def attach_file_to_note(self, note_id: Any, file_path: str, display_name: str) -> bool:
+    def attach_file_to_note(
+        self, note_id: Any, file_path: str, display_name: str
+    ) -> bool:
         try:
             project, activity_id = split_id(note_id)
-            file_id = self._upload(project, activity_id, display_name, Path(file_path).read_bytes())
+            file_id = self._upload(
+                project, activity_id, display_name, Path(file_path).read_bytes()
+            )
             self._c.rest(
                 "PATCH",
                 f"/api/projects/{project}/activities/{activity_id}",
@@ -803,7 +945,9 @@ class AyonProvider(ProdtrackProviderBase):
     ) -> Any:
         """Post the transcript as a comment on the version, with the text attached."""
         project, version_uuid = split_id(version_id)
-        header = f"Meeting transcript: {platform} {meeting_id}, {meeting_date.isoformat()}"
+        header = (
+            f"Meeting transcript: {platform} {meeting_id}, {meeting_date.isoformat()}"
+        )
         created = self._c.rest(
             "POST",
             f"/api/projects/{project}/versions/{version_uuid}/activities",
@@ -841,14 +985,19 @@ class AyonProvider(ProdtrackProviderBase):
     def _project_name(self, project_id: Any) -> str:
         if isinstance(project_id, str) and project_id and ":" not in project_id:
             return project_id
-        raise ValueError(f"Invalid AYON project id {project_id!r}: expected the project name")
+        raise ValueError(
+            f"Invalid AYON project id {project_id!r}: expected the project name"
+        )
 
-    def get_entity(self, entity_type: str, entity_id: Any, resolve_links: bool = True) -> EntityBase:
+    def get_entity(
+        self, entity_type: str, entity_id: Any, resolve_links: bool = True
+    ) -> EntityBase:
         self.mapper.binding(entity_type)
         if entity_type == "project":
             project = self._project_name(entity_id)
             data = self._c.graphql(
-                "query($p: String!) { project(name: $p) { name label active } }", {"p": project}
+                "query($p: String!) { project(name: $p) { name label active } }",
+                {"p": project},
             )
             node = data.get("project")
             if not node:
@@ -873,7 +1022,11 @@ class AyonProvider(ProdtrackProviderBase):
                 {"p": project, "ids": [uuid]},
             )
             edges = data.get("project", {}).get("folders", {}).get("edges", [])
-            if not edges or self._kind_for_folder(edges[0]["node"].get("folderType")) != entity_type:
+            if (
+                not edges
+                or self._kind_for_folder(edges[0]["node"].get("folderType"))
+                != entity_type
+            ):
                 raise ValueError(f"Entity not found: {entity_type} {entity_id}")
             return self._subject_entity(project, edges[0]["node"])
         if entity_type == "task":
@@ -887,15 +1040,22 @@ class AyonProvider(ProdtrackProviderBase):
             if not edges:
                 raise ValueError(f"Entity not found: task {entity_id}")
             node = edges[0]["node"]
-            folder = self._subject_entity(project, node["folder"]) if node.get("folder") else None
+            folder = (
+                self._subject_entity(project, node["folder"])
+                if node.get("folder")
+                else None
+            )
             return self._task_entity(project, node, folder)
         if entity_type == "playlist":
-            lists = [p for p in self.get_playlists_for_project(project) if p.id == entity_id]
+            lists = [
+                p for p in self.get_playlists_for_project(project) if p.id == entity_id
+            ]
             if not lists:
                 raise ValueError(f"Entity not found: playlist {entity_id}")
             playlist = lists[0]
             playlist.versions = [
-                Version(id=make_id(project, i)) for i in self._list_item_ids(project, uuid)
+                Version(id=make_id(project, i))
+                for i in self._list_item_ids(project, uuid)
             ]
             return playlist
         raise ValueError(f"Reading a '{entity_type}' by id is not supported by AYON")
@@ -914,7 +1074,9 @@ class AyonProvider(ProdtrackProviderBase):
         note.id = created_id
         return note
 
-    def find(self, entity_type: str, filters: list[dict[str, Any]], limit: int = 0) -> list[EntityBase]:
+    def find(
+        self, entity_type: str, filters: list[dict[str, Any]], limit: int = 0
+    ) -> list[EntityBase]:
         raise ValueError(
             "Free-form entity queries are not supported by the AYON connector; use "
             "get_entity, search, or the playlist endpoints."
@@ -975,7 +1137,9 @@ class AyonProvider(ProdtrackProviderBase):
                 break
         return out
 
-    def _search_playlists(self, project: str, q: str, limit: int) -> list[dict[str, Any]]:
+    def _search_playlists(
+        self, project: str, q: str, limit: int
+    ) -> list[dict[str, Any]]:
         out = []
         for playlist in self.get_playlists_for_project(project):
             if q.lower() in (playlist.code or "").lower():
@@ -994,7 +1158,9 @@ class AyonProvider(ProdtrackProviderBase):
 
     def _search_users(self, q: str, limit: int) -> list[dict[str, Any]]:
         sel = build_selection(["name", "active", *self.mapper.binding("user").fields])
-        data = self._c.graphql(f"query {{ users(first: 200) {{ edges {{ node {{ {sel} }} }} }} }}")
+        data = self._c.graphql(
+            f"query {{ users(first: 200) {{ edges {{ node {{ {sel} }} }} }} }}"
+        )
         out = []
         for edge in data.get("users", {}).get("edges", []):
             user = self._user_entity(edge["node"])
@@ -1002,12 +1168,21 @@ class AyonProvider(ProdtrackProviderBase):
                 continue
             haystack = f"{user.login} {user.name} {user.email or ''}".lower()
             if q.lower() in haystack:
-                out.append({"type": "User", "id": user.id, "name": user.name, "email": user.email})
+                out.append(
+                    {
+                        "type": "User",
+                        "id": user.id,
+                        "name": user.name,
+                        "email": user.email,
+                    }
+                )
             if len(out) >= limit:
                 break
         return out
 
-    def _search_folders(self, project: str, kind: str, q: str, limit: int) -> list[dict[str, Any]]:
+    def _search_folders(
+        self, project: str, kind: str, q: str, limit: int
+    ) -> list[dict[str, Any]]:
         types = self.mapper.binding(kind).where.get("folderType") or None
         data = self._c.graphql(
             "query($p: String!, $q: String, $t: [String!], $n: Int) { project(name: $p) {"
@@ -1029,7 +1204,9 @@ class AyonProvider(ProdtrackProviderBase):
             )
         return out
 
-    def _search_versions(self, project: str, q: str, limit: int) -> list[dict[str, Any]]:
+    def _search_versions(
+        self, project: str, q: str, limit: int
+    ) -> list[dict[str, Any]]:
         data = self._c.graphql(
             "query($p: String!, $q: String, $n: Int) { project(name: $p) {"
             " versions(search: $q, first: $n) { edges { node { id name"

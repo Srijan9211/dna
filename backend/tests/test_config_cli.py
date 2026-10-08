@@ -53,7 +53,9 @@ def test_show_rejects_an_unknown_section(capsys):
     assert code == 1 and "Unknown section" in err
 
 
-def test_handshake_prints_a_checklist_and_exits_zero_when_it_passes(capsys, monkeypatch):
+def test_handshake_prints_a_checklist_and_exits_zero_when_it_passes(
+    capsys, monkeypatch
+):
     monkeypatch.setenv("PRODTRACK_PROVIDER", "mock")
     code, out, _ = run(capsys, "handshake")
     assert code == 0 and "RESULT: OK" in out and "[ok  ] describe" in out
@@ -76,7 +78,9 @@ def test_handshake_exits_nonzero_on_a_failing_check(capsys, monkeypatch):
     assert code == 1 and "[FAIL] connect" in out and "RESULT: FAILED" in out
 
 
-def test_handshake_reads_a_candidate_file_and_refuses_what_a_save_would_refuse(capsys, tmp_path):
+def test_handshake_reads_a_candidate_file_and_refuses_what_a_save_would_refuse(
+    capsys, tmp_path
+):
     bad = tmp_path / "bad.yaml"
     bad.write_text("auth:\n  provider: none\n", encoding="utf-8")
     code, _, err = run(capsys, "handshake", "--candidate", str(bad))
@@ -91,10 +95,14 @@ def test_history_rollback_and_import_need_the_shared_store(capsys, tmp_path):
         assert code == 1 and "DNA_CONFIG_PERSIST" in err
 
 
-def test_apply_after_a_good_handshake_needs_the_store_too(capsys, monkeypatch, tmp_path):
+def test_apply_after_a_good_handshake_needs_the_store_too(
+    capsys, monkeypatch, tmp_path
+):
     monkeypatch.setenv("PRODTRACK_PROVIDER", "mock")
     candidate = tmp_path / "c.yaml"
-    candidate.write_text("prodtrack:\n  profile:\n    labels: {shot: Plate}\n", encoding="utf-8")
+    candidate.write_text(
+        "prodtrack:\n  profile:\n    labels: {shot: Plate}\n", encoding="utf-8"
+    )
     code, out, err = run(capsys, "handshake", "--candidate", str(candidate), "--apply")
     assert code == 1 and "RESULT: OK" in out and "DNA_CONFIG_PERSIST" in err
 
@@ -107,17 +115,25 @@ def test_the_full_change_workflow_when_persistence_is_on(capsys, monkeypatch, tm
     monkeypatch.setenv("PRODTRACK_PROVIDER", "mock")
     monkeypatch.setattr(configsys, "_get_store", lambda service: shared)
     candidate = tmp_path / "c.yaml"
-    candidate.write_text("prodtrack:\n  profile:\n    labels: {shot: Plate}\n", encoding="utf-8")
+    candidate.write_text(
+        "prodtrack:\n  profile:\n    labels: {shot: Plate}\n", encoding="utf-8"
+    )
 
     code, out, _ = run(capsys, "handshake", "--candidate", str(candidate), "--apply")
     assert code == 0 and "Saved as revision 1" in out
 
     code, out, _ = run(capsys, "history")
-    assert code == 0 and "handshake (cli)" in out and "prodtrack.profile.labels.shot" in out
+    assert (
+        code == 0
+        and "handshake (cli)" in out
+        and "prodtrack.profile.labels.shot" in out
+    )
 
     exported = tmp_path / "export.yaml"
     assert run(capsys, "export", "-o", str(exported))[0] == 0
-    assert yaml.safe_load(exported.read_text())["overrides"]["prodtrack"]["profile"]["labels"] == {"shot": "Plate"}
+    assert yaml.safe_load(exported.read_text())["overrides"]["prodtrack"]["profile"][
+        "labels"
+    ] == {"shot": "Plate"}
 
     assert run(capsys, "rollback", "1")[1].startswith("Rolled back to v1 as revision 2")
     assert run(capsys, "import", str(exported))[1].startswith("Imported as revision 3")

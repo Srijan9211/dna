@@ -47,18 +47,30 @@ describe('secret references', () => {
 
 describe('validateForm', () => {
   it('requires the connection fields', () => {
-    expect(Object.keys(validateForm('ayon', {})).sort()).toEqual(['api_key', 'url']);
-    expect(Object.keys(validateForm('shotgrid', {})).sort()).toEqual(['api_key', 'script_name', 'url']);
+    expect(Object.keys(validateForm('ayon', {})).sort()).toEqual([
+      'api_key',
+      'url',
+    ]);
+    expect(Object.keys(validateForm('shotgrid', {})).sort()).toEqual([
+      'api_key',
+      'script_name',
+      'url',
+    ]);
   });
 
   it('refuses a pasted secret and says what to enter instead', () => {
-    const errors = validateForm('ayon', { url: 'http://a', api_key: 'plain-key-value' });
+    const errors = validateForm('ayon', {
+      url: 'http://a',
+      api_key: 'plain-key-value',
+    });
     expect(errors.api_key).toMatch(/reference/);
     expect(errors.api_key).toMatch(/never stored as plain text/);
   });
 
   it('accepts a complete form with a reference', () => {
-    expect(validateForm('ayon', { url: 'http://a', api_key: '${env:AYON_API_KEY}' })).toEqual({});
+    expect(
+      validateForm('ayon', { url: 'http://a', api_key: '${env:AYON_API_KEY}' })
+    ).toEqual({});
   });
 
   it('needs nothing for the mock connector', () => {
@@ -69,25 +81,42 @@ describe('validateForm', () => {
 describe('buildCandidate', () => {
   it('builds the connector and its connection settings, trimmed', () => {
     expect(
-      buildCandidate('ayon', { url: ' http://a ', api_key: '${env:K}', sudo_user: '' })
+      buildCandidate('ayon', {
+        url: ' http://a ',
+        api_key: '${env:K}',
+        sudo_user: '',
+      })
     ).toEqual({
-      prodtrack: { connector: 'ayon', ayon: { url: 'http://a', api_key: '${env:K}' } },
+      prodtrack: {
+        connector: 'ayon',
+        ayon: { url: 'http://a', api_key: '${env:K}' },
+      },
     });
   });
 
   it('leaves empty settings out so defaults and the environment still apply', () => {
-    expect(buildCandidate('shotgrid', {})).toEqual({ prodtrack: { connector: 'shotgrid' } });
+    expect(buildCandidate('shotgrid', {})).toEqual({
+      prodtrack: { connector: 'shotgrid' },
+    });
   });
 
   it('carries accepted profile overrides', () => {
-    const overrides = { entities: { shot: { where: { folderType: ['Shot'] } } } };
+    const overrides = {
+      entities: { shot: { where: { folderType: ['Shot'] } } },
+    };
     expect(buildCandidate('ayon', { url: 'http://a' }, overrides)).toEqual({
-      prodtrack: { connector: 'ayon', ayon: { url: 'http://a' }, profile: overrides },
+      prodtrack: {
+        connector: 'ayon',
+        ayon: { url: 'http://a' },
+        profile: overrides,
+      },
     });
   });
 
   it('never invents a connection block for the mock connector', () => {
-    expect(buildCandidate('mock', { url: 'ignored' })).toEqual({ prodtrack: { connector: 'mock' } });
+    expect(buildCandidate('mock', { url: 'ignored' })).toEqual({
+      prodtrack: { connector: 'mock' },
+    });
   });
 });
 
@@ -95,20 +124,32 @@ describe('mergeOverrides (mirrors the backend merge)', () => {
   it('merges objects key by key', () => {
     expect(
       mergeOverrides(
-        { entities: { version: { fields: { a: 'x' } } }, labels: { shot: 'Plate' } },
+        {
+          entities: { version: { fields: { a: 'x' } } },
+          labels: { shot: 'Plate' },
+        },
         { entities: { version: { fields: { b: 'y' } } } }
       )
-    ).toEqual({ entities: { version: { fields: { a: 'x', b: 'y' } } }, labels: { shot: 'Plate' } });
+    ).toEqual({
+      entities: { version: { fields: { a: 'x', b: 'y' } } },
+      labels: { shot: 'Plate' },
+    });
   });
 
   it('replaces a list whole, and keeps null (which means "remove this key")', () => {
     expect(
       mergeOverrides(
-        { entities: { shot: { where: { folderType: ['Shotz', 'Sequence'] } } } },
+        {
+          entities: { shot: { where: { folderType: ['Shotz', 'Sequence'] } } },
+        },
         { entities: { shot: { where: { folderType: ['Shot', 'Sequence'] } } } }
       )
-    ).toEqual({ entities: { shot: { where: { folderType: ['Shot', 'Sequence'] } } } });
-    expect(mergeOverrides({}, { fields: { old: null, new: 'status' } })).toEqual({
+    ).toEqual({
+      entities: { shot: { where: { folderType: ['Shot', 'Sequence'] } } },
+    });
+    expect(
+      mergeOverrides({}, { fields: { old: null, new: 'status' } })
+    ).toEqual({
       fields: { old: null, new: 'status' },
     });
   });
@@ -122,7 +163,11 @@ describe('mergeOverrides (mirrors the backend merge)', () => {
   });
 
   it('accepting two suggestions in a row accumulates both fixes', () => {
-    const first = { entities: { version: { fields: { sg_status_list: null, sg_status: 'status' } } } };
+    const first = {
+      entities: {
+        version: { fields: { sg_status_list: null, sg_status: 'status' } },
+      },
+    };
     const second = { entities: { shot: { where: { folderType: ['Shot'] } } } };
     expect(mergeOverrides(mergeOverrides({}, first), second)).toEqual({
       entities: { ...first.entities, ...second.entities },
@@ -150,7 +195,11 @@ describe('report helpers', () => {
     expect(canSave(report({ ok: false }))).toBe(false);
     expect(canSave(report({ checks: [] }))).toBe(false);
     expect(
-      canSave(report({ checks: [{ name: 'n', status: 'warn', message: '', details: {} }] }))
+      canSave(
+        report({
+          checks: [{ name: 'n', status: 'warn', message: '', details: {} }],
+        })
+      )
     ).toBe(true);
   });
 
@@ -169,14 +218,17 @@ describe('report helpers', () => {
 describe('connectors and routing', () => {
   it('lists AYON, ShotGrid and the mock, each with a spec', () => {
     expect(CONNECTORS.map((c) => c.id)).toEqual(['ayon', 'shotgrid', 'mock']);
-    expect(connectorSpec('ayon').fields.find((f) => f.key === 'api_key')?.secret).toBe(true);
+    expect(
+      connectorSpec('ayon').fields.find((f) => f.key === 'api_key')?.secret
+    ).toBe(true);
     expect(() => connectorSpec('nope' as never)).toThrow(/Unknown connector/);
   });
 
   it('marks every secret field in every connector (nothing secret is a plain field)', () => {
     for (const c of CONNECTORS) {
       for (const f of c.fields) {
-        if (/key|secret|password|token/i.test(f.key)) expect(f.secret).toBe(true);
+        if (/key|secret|password|token/i.test(f.key))
+          expect(f.secret).toBe(true);
       }
     }
   });

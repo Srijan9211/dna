@@ -10,8 +10,8 @@ import requests as http_requests
 from google.auth.transport import requests
 from google.oauth2 import id_token
 
-from dna.configsys import get_config
 from dna.auth_providers.auth_provider_base import AuthProviderBase
+from dna.configsys import get_config
 
 
 class GoogleAuthProvider(AuthProviderBase):

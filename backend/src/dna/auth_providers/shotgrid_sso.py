@@ -59,7 +59,6 @@ try:
 except ImportError:
     raise ImportError("PyJWT is required: pip install PyJWT")
 
-from dna.configsys import get_config
 from dna.auth.session_store import (
     AbstractSessionStore,
     ShotGridCredentials,
@@ -67,6 +66,7 @@ from dna.auth.session_store import (
 )
 from dna.auth.shotgrid_auth_client import ShotGridAuthClient, ShotGridUnavailable
 from dna.auth_providers.auth_provider_base import AuthProviderBase
+from dna.configsys import get_config
 
 logger = logging.getLogger(__name__)
 

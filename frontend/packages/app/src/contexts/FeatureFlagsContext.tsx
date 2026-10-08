@@ -26,7 +26,9 @@ interface FeatureFlagsContextValue {
   setInReviewEnabled: (enabled: boolean) => void;
 }
 
-const FeatureFlagsContext = createContext<FeatureFlagsContextValue | null>(null);
+const FeatureFlagsContext = createContext<FeatureFlagsContextValue | null>(
+  null
+);
 
 export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
   // A deployment can pin a flag on or off for everyone ("pipeline" lock): from the
@@ -61,23 +63,32 @@ export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
   const transcriptionEnabled = transcriptionBase || aiEnabled;
   const inReviewEnabled = inReviewBase || transcriptionEnabled;
 
-  const setTranscriptionEnabled = useCallback((enabled: boolean) => {
-    if (pinnedTranscription !== null) return;
-    localStorage.setItem(TRANSCRIPTION_KEY, String(enabled));
-    setTranscriptionState(enabled);
-  }, [pinnedTranscription]);
+  const setTranscriptionEnabled = useCallback(
+    (enabled: boolean) => {
+      if (pinnedTranscription !== null) return;
+      localStorage.setItem(TRANSCRIPTION_KEY, String(enabled));
+      setTranscriptionState(enabled);
+    },
+    [pinnedTranscription]
+  );
 
-  const setAiEnabled = useCallback((enabled: boolean) => {
-    if (pinnedAi !== null) return;
-    localStorage.setItem(AI_KEY, String(enabled));
-    setAiState(enabled);
-  }, [pinnedAi]);
+  const setAiEnabled = useCallback(
+    (enabled: boolean) => {
+      if (pinnedAi !== null) return;
+      localStorage.setItem(AI_KEY, String(enabled));
+      setAiState(enabled);
+    },
+    [pinnedAi]
+  );
 
-  const setInReviewEnabled = useCallback((enabled: boolean) => {
-    if (pinnedInReview !== null) return;
-    localStorage.setItem(IN_REVIEW_KEY, String(enabled));
-    setInReviewState(enabled);
-  }, [pinnedInReview]);
+  const setInReviewEnabled = useCallback(
+    (enabled: boolean) => {
+      if (pinnedInReview !== null) return;
+      localStorage.setItem(IN_REVIEW_KEY, String(enabled));
+      setInReviewState(enabled);
+    },
+    [pinnedInReview]
+  );
 
   return (
     <FeatureFlagsContext.Provider
@@ -89,11 +100,7 @@ export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
         aiLocked: pinnedAi !== null,
         inReviewLocked: pinnedInReview !== null || transcriptionEnabled,
         transcriptionLockReason:
-          pinnedTranscription !== null
-            ? 'pipeline'
-            : aiEnabled
-              ? 'ai'
-              : null,
+          pinnedTranscription !== null ? 'pipeline' : aiEnabled ? 'ai' : null,
         inReviewLockReason:
           pinnedInReview !== null
             ? 'pipeline'

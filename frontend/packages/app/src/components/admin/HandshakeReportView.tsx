@@ -67,13 +67,20 @@ export function HandshakeReportView({ report, onAccept }: Props) {
                   <Icon
                     size={18}
                     aria-label={label}
-                    style={{ color: `var(--${color}-9)`, marginTop: 2, flexShrink: 0 }}
+                    style={{
+                      color: `var(--${color}-9)`,
+                      marginTop: 2,
+                      flexShrink: 0,
+                    }}
                   />
                   <Flex direction="column" gap="1">
                     <Text size="2" weight="medium">
                       {check.name}
                     </Text>
-                    <Text size="2" color={check.status === 'fail' ? 'red' : 'gray'}>
+                    <Text
+                      size="2"
+                      color={check.status === 'fail' ? 'red' : 'gray'}
+                    >
                       {check.message}
                     </Text>
                     {facts && (

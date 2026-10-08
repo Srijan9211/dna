@@ -21,8 +21,16 @@ import pytest
 from dna import configsys
 from dna.prodtrack_providers.ayon import AyonProvider, split_id
 
-_ENV = {k: os.environ.get(k) for k in (
-    "AYON_URL", "AYON_API_KEY", "DNA_AYON_LIVE_WRITE", "DNA_AYON_TEST_PROJECT", "DNA_AYON_TEST_USER")}
+_ENV = {
+    k: os.environ.get(k)
+    for k in (
+        "AYON_URL",
+        "AYON_API_KEY",
+        "DNA_AYON_LIVE_WRITE",
+        "DNA_AYON_TEST_PROJECT",
+        "DNA_AYON_TEST_USER",
+    )
+}
 
 pytestmark = pytest.mark.skipif(
     not (all(_ENV.values()) and _ENV["DNA_AYON_LIVE_WRITE"] == "1"),
@@ -35,7 +43,11 @@ MARK = "DNA live test - safe to delete"
 @pytest.fixture
 def live(monkeypatch):
     configsys.reset_config()
-    provider = AyonProvider(url=_ENV["AYON_URL"], api_key=_ENV["AYON_API_KEY"], sudo_user=_ENV["DNA_AYON_TEST_USER"])
+    provider = AyonProvider(
+        url=_ENV["AYON_URL"],
+        api_key=_ENV["AYON_API_KEY"],
+        sudo_user=_ENV["DNA_AYON_TEST_USER"],
+    )
     created: list[tuple[str, str, str]] = []  # (kind, project, id)
     yield provider, created
     for kind, project, entity_id in reversed(created):
@@ -63,16 +75,34 @@ def test_note_lifecycle_with_attribution_attachment_and_status(live, tmp_path):
 
     email = provider.get_entity("user", _ENV["DNA_AYON_TEST_USER"]).email
     note_id = provider.publish_note(
-        version.id, MARK, "DNA live test", [_ENV["DNA_AYON_TEST_USER"]], [], [], author_email=email
+        version.id,
+        MARK,
+        "DNA live test",
+        [_ENV["DNA_AYON_TEST_USER"]],
+        [],
+        [],
+        author_email=email,
     )
     created.append(("activity", *split_id(note_id)))
-    assert provider.publish_note(
-        version.id, MARK, "DNA live test", [_ENV["DNA_AYON_TEST_USER"]], [], [], author_email=email
-    ) == note_id  # idempotent
+    assert (
+        provider.publish_note(
+            version.id,
+            MARK,
+            "DNA live test",
+            [_ENV["DNA_AYON_TEST_USER"]],
+            [],
+            [],
+            author_email=email,
+        )
+        == note_id
+    )  # idempotent
 
     notes = provider.get_entity("version", version.id).notes
     mine = next(n for n in notes if n.id == note_id)
-    assert mine.subject == "DNA live test" and mine.author.login == _ENV["DNA_AYON_TEST_USER"]
+    assert (
+        mine.subject == "DNA live test"
+        and mine.author.login == _ENV["DNA_AYON_TEST_USER"]
+    )
 
     attachment = tmp_path / "a.txt"
     attachment.write_text("live")
@@ -92,19 +122,33 @@ def test_playlist_lifecycle(live):
     playlist = provider.create_playlist(project, f"{MARK} list")
     created.append(("list", *split_id(playlist.id)))
     assert provider.add_version_to_playlist(playlist.id, version.id) is True
-    assert provider.add_version_to_playlist(playlist.id, version.id) is True  # idempotent
-    assert [v.id for v in provider.get_versions_for_playlist(playlist.id)] == [version.id]
+    assert (
+        provider.add_version_to_playlist(playlist.id, version.id) is True
+    )  # idempotent
+    assert [v.id for v in provider.get_versions_for_playlist(playlist.id)] == [
+        version.id
+    ]
 
 
 def test_transcript_publish_and_update(live):
     provider, created = live
     project, playlist, version = _target(provider)
     entity_id = provider.publish_transcript(
-        project_id=project, playlist_id=playlist.id, version_id=version.id,
-        meeting_id="live-1", meeting_date=date(2026, 10, 6), platform="meet", body=MARK,
+        project_id=project,
+        playlist_id=playlist.id,
+        version_id=version.id,
+        meeting_id="live-1",
+        meeting_date=date(2026, 10, 6),
+        platform="meet",
+        body=MARK,
     )
     created.append(("activity", *split_id(entity_id)))
-    assert provider.update_transcript(
-        entity_type=provider.transcript_entity_type(project), entity_id=entity_id,
-        body=f"{MARK} (edited)", meeting_date=date(2026, 10, 6),
-    ) is True
+    assert (
+        provider.update_transcript(
+            entity_type=provider.transcript_entity_type(project),
+            entity_id=entity_id,
+            body=f"{MARK} (edited)",
+            meeting_date=date(2026, 10, 6),
+        )
+        is True
+    )

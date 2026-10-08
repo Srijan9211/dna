@@ -9,9 +9,12 @@ layer returns 401 / 403 / 404 / 503 without knowing it is talking to AYON.
 
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
 
 from dna.prodtrack_providers.prodtrack_provider_base import (
     ProdtrackAuthError,
@@ -19,7 +22,17 @@ from dna.prodtrack_providers.prodtrack_provider_base import (
     ProdtrackUnavailableError,
 )
 
+logger = logging.getLogger(__name__)
+
 AS_USER_HEADER = "x-as-user"
+
+# Transient failures worth another attempt, for reads only: a write that timed out
+# may have succeeded, so it is never replayed.
+_RETRY_STATUSES = (502, 503, 504)
+_RETRIES = 2
+_BACKOFF_SECONDS = 0.3
+_CONNECT_TIMEOUT = 5.0
+_POOL_SIZE = 50
 
 # GraphQL reports problems in a 200 response body.  These substrings of an error
 # message mean "you may not", the rest are treated as the server failing.
@@ -51,7 +64,12 @@ class AyonClient:
         self.as_user = as_user
         self.timeout = timeout
         self._header_name = as_user_header
-        self._session = session or requests.Session()
+        if session is None:
+            session = requests.Session()
+            adapter = HTTPAdapter(pool_connections=_POOL_SIZE, pool_maxsize=_POOL_SIZE)
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
+        self._session = session
 
     # ── identity ──────────────────────────────────────────────────────────
 
@@ -85,23 +103,50 @@ class AyonClient:
         data: Any = None,
         headers: Optional[dict[str, str]] = None,
         stream: bool = False,
+        retry: Optional[bool] = None,
     ) -> requests.Response:
-        """Perform a request and return the response, raising domain errors."""
-        try:
-            response = self._session.request(
-                method,
-                f"{self.url}{path}",
-                json=json,
-                params=params,
-                data=data,
-                headers=self._headers(headers),
-                timeout=self.timeout,
-                stream=stream,
-            )
-        except requests.RequestException as exc:
-            raise ProdtrackUnavailableError(f"AYON is unreachable: {exc}") from exc
-        self._raise_for_status(response)
-        return response
+        """Perform a request and return the response, raising domain errors.
+
+        Reads (GET/HEAD, and GraphQL queries via ``retry=True``) are retried a couple
+        of times on a dropped connection or a 502/503/504; anything else is sent once.
+        """
+        if retry is None:
+            retry = method.upper() in ("GET", "HEAD")
+        attempts = 1 + (_RETRIES if retry else 0)
+        timeout = (min(_CONNECT_TIMEOUT, self.timeout), self.timeout)
+        for attempt in range(1, attempts + 1):
+            try:
+                response = self._session.request(
+                    method,
+                    f"{self.url}{path}",
+                    json=json,
+                    params=params,
+                    data=data,
+                    headers=self._headers(headers),
+                    timeout=timeout,
+                    stream=stream,
+                )
+            except requests.RequestException as exc:
+                if attempt < attempts:
+                    logger.warning(
+                        "AYON %s %s failed (%s); retrying", method, path, exc
+                    )
+                    time.sleep(_BACKOFF_SECONDS * attempt)
+                    continue
+                raise ProdtrackUnavailableError("AYON is unreachable") from exc
+            if response.status_code in _RETRY_STATUSES and attempt < attempts:
+                logger.warning(
+                    "AYON %s %s answered %s; retrying",
+                    method,
+                    path,
+                    response.status_code,
+                )
+                response.close()
+                time.sleep(_BACKOFF_SECONDS * attempt)
+                continue
+            self._raise_for_status(response)
+            return response
+        raise AssertionError("unreachable")  # pragma: no cover
 
     def rest(self, method: str, path: str, **kwargs: Any) -> Any:
         """REST call returning the decoded JSON body (``{}`` if empty)."""
@@ -111,11 +156,18 @@ class AyonClient:
         try:
             return response.json()
         except ValueError as exc:
-            raise ProdtrackUnavailableError("AYON returned a non-JSON response") from exc
+            raise ProdtrackUnavailableError(
+                "AYON returned a non-JSON response"
+            ) from exc
 
     def graphql(self, query: str, variables: Optional[dict[str, Any]] = None) -> dict:
         """Run a GraphQL query and return its ``data``."""
-        payload = self.rest("POST", "/graphql", json={"query": query, "variables": variables or {}})
+        payload = self.rest(
+            "POST",
+            "/graphql",
+            json={"query": query, "variables": variables or {}},
+            retry=True,
+        )
         errors = payload.get("errors")
         if errors:
             raise self._graphql_error(errors)
@@ -138,13 +190,17 @@ class AyonClient:
         nodes: list[dict] = []
         after: Optional[str] = None
         for _ in range(max_pages):
-            data = self.graphql(query, {**(variables or {}), "first": page_size, "after": after})
+            data = self.graphql(
+                query, {**(variables or {}), "first": page_size, "after": after}
+            )
             connection: Any = data
             for key in path:
                 connection = (connection or {}).get(key)
             if not connection:
                 break
-            nodes.extend(edge["node"] for edge in connection.get("edges", []) if edge.get("node"))
+            nodes.extend(
+                edge["node"] for edge in connection.get("edges", []) if edge.get("node")
+            )
             page = connection.get("pageInfo") or {}
             if not page.get("hasNextPage"):
                 break
@@ -174,7 +230,9 @@ class AyonClient:
                 "access may have been revoked. Please log in again."
             )
         if status == 403:
-            raise ProdtrackPermissionError(f"AYON denied access to this resource: {detail}")
+            raise ProdtrackPermissionError(
+                f"AYON denied access to this resource: {detail}"
+            )
         if status == 404:
             raise AyonNotFound(f"Not found in AYON: {detail}")
         # AYON answers a bare 500 when the x-as-user target does not exist, which

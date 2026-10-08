@@ -23,14 +23,15 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from starlette.background import BackgroundTask
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 
 from dna.auth.email import emails_match
+from dna.auth.errors import AuthBackendUnavailable
 from dna.auth.session_store import UserSession
 from dna.auth_providers.auth_provider_base import AuthProviderBase, get_auth_provider
-from dna.auth.errors import AuthBackendUnavailable
 from dna.configsys import get_config
 from dna.cors_settings import get_cors_middleware_kwargs
 from dna.events import EventType, get_event_publisher
@@ -116,6 +117,10 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+from dna import media_proxy as _media_proxy  # noqa: E402
+
+logging.getLogger("uvicorn.access").addFilter(_media_proxy.RedactTokens())
 
 # API metadata for Swagger documentation
 API_TITLE = "DNA Backend"
@@ -249,6 +254,26 @@ def _verify_shotgrid_script_credentials() -> bool:
     return True
 
 
+def _warn_if_media_links_are_unstable() -> None:
+    """Signed media links need the same key in every worker and across restarts."""
+    from dna.configsys import providers
+
+    cfg = get_config()
+    connector = cfg.get("prodtrack").connector
+    if not getattr(
+        providers.prodtrack.resolve(connector), "MEDIA_REQUIRES_PROXY", False
+    ):
+        return
+    if not _media_proxy.has_stable_key(cfg.get("auth").jwt.secret_key):
+        logger.warning(
+            "The %s connector serves media through signed links, but no JWT secret "
+            "is configured: links are signed with a per-process key, so they break "
+            "after a restart and when more than one worker process is running. Set "
+            "JWT_SECRET_KEY.",
+            connector,
+        )
+
+
 @contextlib.asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Start up and shut down application services."""
@@ -268,6 +293,8 @@ async def lifespan(_app: FastAPI):
             "responds. Check SHOTGRID_URL and network reachability."
         )
         _startup_checks["shotgrid"] = False
+
+    _warn_if_media_links_are_unstable()
 
     service = get_transcription_service()
     await service.init_providers()
@@ -322,7 +349,7 @@ async def _handle_shotgrid_fault(request: Request, exc: SGFault):
 
 
 @app.exception_handler(ProdtrackPermissionError)
-async def _handle_prodtrack_permission_error(
+def _handle_prodtrack_permission_error(
     _request: Request, exc: ProdtrackPermissionError
 ):
     """Production tracker denied access to the resource → 403."""
@@ -330,7 +357,7 @@ async def _handle_prodtrack_permission_error(
 
 
 @app.exception_handler(ProdtrackAuthError)
-async def _handle_prodtrack_auth_error(_request: Request, exc: ProdtrackAuthError):
+def _handle_prodtrack_auth_error(_request: Request, exc: ProdtrackAuthError):
     """Impersonated identity rejected (deactivated / revoked) → 401."""
     return JSONResponse(
         status_code=401,
@@ -340,9 +367,7 @@ async def _handle_prodtrack_auth_error(_request: Request, exc: ProdtrackAuthErro
 
 
 @app.exception_handler(ProdtrackUnavailableError)
-async def _handle_prodtrack_unavailable(
-    _request: Request, exc: ProdtrackUnavailableError
-):
+def _handle_prodtrack_unavailable(_request: Request, exc: ProdtrackUnavailableError):
     """Production tracker errored or is unreachable → 503."""
     logger.warning("Production tracker unavailable: %s", exc)
     return JSONResponse(status_code=503, content={"detail": str(exc)})
@@ -619,7 +644,7 @@ ProdtrackProviderDep = Annotated[
     description="Returns basic API information and version.",
     response_description="API information with name and version",
 )
-async def root():
+def root():
     """Root endpoint returning API information."""
     return {"message": "DNA Backend API", "version": API_VERSION}
 
@@ -631,7 +656,7 @@ async def root():
     description="Check if the API is running and its dependencies are reachable.",
     response_description="Health status of the API and its dependencies",
 )
-async def health(response: Response):
+def health(response: Response):
     """Readiness probe for monitoring and load balancers.
 
     Reports the dependencies this instance actually needs, so an orchestrator
@@ -695,7 +720,7 @@ async def test_broadcast_transcript(payload: dict) -> dict:
 
 
 @app.get("/auth/login", tags=["Auth"], summary="Get login mode — pat or sso")
-async def auth_get_login_info(auth_provider: AuthProviderDep = None):
+def auth_get_login_info(auth_provider: AuthProviderDep = None):
     """Return the configured auth mode so the frontend can render the correct login UI.
 
     Returns:
@@ -938,7 +963,7 @@ def auth_logout_all(
 
 
 @app.get("/auth/me", tags=["Auth"], summary="Get current user info")
-async def auth_me(auth: AuthContextDep):
+def auth_me(auth: AuthContextDep):
     """Return information about the currently authenticated user.
 
     A session that has ended is rejected with 401 during authentication, so the
@@ -971,7 +996,7 @@ ATTACHMENT_STORE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @app.post("/api/attachments", tags=["Attachments"])
-async def upload_attachment(
+def upload_attachment(
     _: CurrentUserDep,
     file: UploadFile = File(...),
 ) -> dict:
@@ -992,7 +1017,7 @@ async def upload_attachment(
     summary="Retrieve a staged attachment",
     response_class=FileResponse,
 )
-async def get_attachment(attachment_id: str, _: CurrentUserDep) -> FileResponse:
+def get_attachment(attachment_id: str, _: CurrentUserDep) -> FileResponse:
     """Return the image file for a staged attachment by ID."""
     attachment_dir = ATTACHMENT_STORE_DIR / attachment_id
     if not attachment_dir.exists():
@@ -1007,7 +1032,7 @@ async def get_attachment(attachment_id: str, _: CurrentUserDep) -> FileResponse:
 
 
 @app.delete("/api/attachments/{attachment_id}", tags=["Attachments"])
-async def delete_attachment(attachment_id: str, _: CurrentUserDep) -> dict:
+def delete_attachment(attachment_id: str, _: CurrentUserDep) -> dict:
     """Delete a staged attachment by ID."""
     attachment_dir = ATTACHMENT_STORE_DIR / attachment_id
     if not attachment_dir.exists():
@@ -1023,7 +1048,7 @@ async def delete_attachment(attachment_id: str, _: CurrentUserDep) -> dict:
     description="Returns a thumbnail image for a version from the mock dataset (when using mock prodtrack provider).",
     response_class=FileResponse,
 )
-async def get_mock_thumbnail(version_id: EntityId):
+def get_mock_thumbnail(version_id: EntityId):
     """Serve a thumbnail image from mock_data/thumbnails/ for the given version ID."""
     for ext in THUMBNAIL_EXTENSIONS:
         path = MOCK_THUMBNAILS_DIR / f"{version_id}{ext}"
@@ -1124,7 +1149,9 @@ def get_media(
         provider = get_prodtrack_provider(sudo_login=claims.get("u"))
         stream = provider.open_media(version_id, kind, request.headers.get("range"))
     except NotImplementedError:
-        raise HTTPException(status_code=404, detail="This connector serves media directly.")
+        raise HTTPException(
+            status_code=404, detail="This connector serves media directly."
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     headers = {**stream.headers, "Cache-Control": "private, max-age=300"}
@@ -1143,7 +1170,7 @@ def get_media(
     description="Retrieve version information from the production tracking system.",
     response_model=Version,
 )
-async def get_version(
+def get_version(
     version_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Version:
     """Get a version entity by its ID."""
@@ -1162,7 +1189,7 @@ async def get_version(
     description="Retrieve playlist information including linked versions.",
     response_model=Playlist,
 )
-async def get_playlist(
+def get_playlist(
     playlist_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Playlist:
     """Get a playlist entity by its ID."""
@@ -1179,7 +1206,7 @@ async def get_playlist(
     description="Retrieve shot information from the production tracking system.",
     response_model=Shot,
 )
-async def get_shot(
+def get_shot(
     shot_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Shot:
     """Get a shot entity by its ID."""
@@ -1196,7 +1223,7 @@ async def get_shot(
     description="Retrieve asset information from the production tracking system.",
     response_model=Asset,
 )
-async def get_asset(
+def get_asset(
     asset_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Asset:
     """Get an asset entity by its ID."""
@@ -1213,7 +1240,7 @@ async def get_asset(
     description="Retrieve task information from the production tracking system.",
     response_model=Task,
 )
-async def get_task(
+def get_task(
     task_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Task:
     """Get a task entity by its ID."""
@@ -1230,7 +1257,7 @@ async def get_task(
     description="Retrieve note information from the production tracking system.",
     response_model=Note,
 )
-async def get_note(
+def get_note(
     note_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Note:
     """Get a note entity by its ID."""
@@ -1272,7 +1299,7 @@ def _create_stub_entity(entity_type: str, entity_id: EntityId) -> EntityBase:
     response_model=Note,
     status_code=201,
 )
-async def create_note(
+def create_note(
     request: CreateNoteRequest, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> Note:
     """Create a new note entity."""
@@ -1306,7 +1333,7 @@ async def create_note(
     description="Search for entities matching the given filters.",
     response_model=list[EntityBase],
 )
-async def find_entities(
+def find_entities(
     request: FindRequest, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> list[EntityBase]:
     """Find entities matching the given filters."""
@@ -1333,7 +1360,7 @@ async def find_entities(
     description="Unified search endpoint for @mentions and entity linking.",
     response_model=dict[str, list[SearchResult]],
 )
-async def search_entities(
+def search_entities(
     request: SearchRequest, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> dict[str, list[SearchResult]]:
     """Search for entities across multiple entity types."""
@@ -1365,7 +1392,7 @@ async def search_entities(
     description="Get valid status options for versions from the production tracking system.",
     response_model=list[StatusOption],
 )
-async def get_version_statuses(
+def get_version_statuses(
     provider: ProdtrackProviderDep,
     project_id: Optional[EntityId] = None,
 ) -> list[StatusOption]:
@@ -1393,7 +1420,9 @@ async def update_version_status(
 ) -> UpdateVersionStatusResponse:
     """Update the status of a version without publishing a note."""
     try:
-        success = provider.update_version_status(version_id, request.status)
+        success = await run_in_threadpool(
+            provider.update_version_status, version_id, request.status
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not success:
@@ -1417,7 +1446,7 @@ async def update_version_status(
     description="Retrieve user information by their email address.",
     response_model=User,
 )
-async def get_user_by_email(
+def get_user_by_email(
     user_email: str, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> User:
     """Get a user by their email address."""
@@ -1439,7 +1468,7 @@ async def get_user_by_email(
     description="Retrieve all projects accessible by the specified user email.",
     response_model=list[Project],
 )
-async def get_projects_for_user(
+def get_projects_for_user(
     user_email: str, provider: ProdtrackProviderDep, current_user: CurrentUserDep
 ) -> list[Project]:
     """Get projects for a user by their email address."""
@@ -1460,7 +1489,7 @@ async def get_projects_for_user(
     description="Retrieve all playlists for the specified project.",
     response_model=list[Playlist],
 )
-async def get_playlists_for_project(
+def get_playlists_for_project(
     project_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> list[Playlist]:
     """Get playlists for a project."""
@@ -1477,7 +1506,7 @@ async def get_playlists_for_project(
     description="Create a new playlist in the production tracking system.",
     response_model=Playlist,
 )
-async def create_playlist(
+def create_playlist(
     project_id: EntityId,
     request: CreatePlaylistRequest,
     provider: ProdtrackProviderDep,
@@ -1548,7 +1577,7 @@ async def upsert_project_glossary(
     description="Retrieve all versions in the specified playlist.",
     response_model=list[Version],
 )
-async def get_versions_for_playlist(
+def get_versions_for_playlist(
     playlist_id: EntityId, provider: ProdtrackProviderDep, _: CurrentUserDep
 ) -> list[Version]:
     """Get versions for a playlist."""
@@ -1567,7 +1596,7 @@ async def get_versions_for_playlist(
     description="Add an existing version to a playlist.",
     response_model=Version,
 )
-async def add_version_to_playlist(
+def add_version_to_playlist(
     playlist_id: EntityId,
     request: AddVersionToPlaylistRequest,
     provider: ProdtrackProviderDep,

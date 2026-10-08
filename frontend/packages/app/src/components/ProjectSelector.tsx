@@ -4,10 +4,7 @@ import { Button, Flex, Select, Spinner } from '@radix-ui/themes';
 import { Playlist, Project } from '@dna/core';
 import { useGetProjectsForUser, useGetPlaylistsForProject } from '../api';
 import { Logo } from './Logo';
-import {
-  StyledSelectTrigger,
-  StyledSelectContent,
-} from './FormInputs';
+import { StyledSelectTrigger, StyledSelectContent } from './FormInputs';
 import { useAuth } from '../contexts';
 import { useLabels } from '../hooks/useLabels';
 
@@ -296,7 +293,15 @@ export function clearUserSession(): void {
 
 export function ProjectSelector({ onSelectionComplete }: ProjectSelectorProps) {
   const label = useLabels();
-  const { isAuthenticated, isLoading: isAuthLoading, user, signIn, signInWithEmail, signOut, authProvider } = useAuth();
+  const {
+    isAuthenticated,
+    isLoading: isAuthLoading,
+    user,
+    signIn,
+    signInWithEmail,
+    signOut,
+    authProvider,
+  } = useAuth();
   const [emailInput, setEmailInput] = useState('');
   const [step, setStep] = useState<Step>('loading');
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -524,7 +529,9 @@ export function ProjectSelector({ onSelectionComplete }: ProjectSelectorProps) {
                     value={selectedPlaylistId}
                     onValueChange={handlePlaylistSelect}
                   >
-                    <StyledSelectTrigger placeholder={`Choose a ${label('playlist').toLowerCase()}...`} />
+                    <StyledSelectTrigger
+                      placeholder={`Choose a ${label('playlist').toLowerCase()}...`}
+                    />
                     <StyledSelectContent>
                       {playlists.map((playlist) => (
                         <Select.Item

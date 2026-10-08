@@ -33,7 +33,9 @@ interface Props {
 }
 
 function asConnector(value: string | undefined): ConnectorId {
-  return CONNECTORS.some((c) => c.id === value) ? (value as ConnectorId) : 'ayon';
+  return CONNECTORS.some((c) => c.id === value)
+    ? (value as ConnectorId)
+    : 'ayon';
 }
 
 /**
@@ -62,7 +64,10 @@ export function TrackerSetup({ currentConnector }: Props) {
   } | null>(null);
 
   const spec = connectorSpec(connector);
-  const errors = useMemo(() => validateForm(connector, values), [connector, values]);
+  const errors = useMemo(
+    () => validateForm(connector, values),
+    [connector, values]
+  );
   const candidate = useMemo(
     () => buildCandidate(connector, values, overrides),
     [connector, values, overrides]
@@ -72,7 +77,10 @@ export function TrackerSetup({ currentConnector }: Props) {
   const isFresh = report !== null && testedKey === key;
 
   const run = useMutation({
-    mutationFn: (args: { candidate: Record<string, unknown>; apply: boolean }) =>
+    mutationFn: (args: {
+      candidate: Record<string, unknown>;
+      apply: boolean;
+    }) =>
       apiHandler.runHandshake({
         candidate: args.candidate,
         smoke_email: smokeEmail.trim() || undefined,
@@ -85,7 +93,10 @@ export function TrackerSetup({ currentConnector }: Props) {
     setError(null);
     setSavedRevision(null);
     try {
-      const result = await run.mutateAsync({ candidate: nextCandidate, apply: false });
+      const result = await run.mutateAsync({
+        candidate: nextCandidate,
+        apply: false,
+      });
       setReport(result);
       setTestedKey(JSON.stringify({ candidate: nextCandidate, smokeEmail }));
     } catch (err) {
@@ -126,8 +137,9 @@ export function TrackerSetup({ currentConnector }: Props) {
       <Flex direction="column" gap="1">
         <Heading size="4">Production tracker</Heading>
         <Text size="2" color="gray">
-          Choose your tracker and how DNA reaches it. DNA tests the real connection
-          before anything is saved, and never stores a secret as plain text.
+          Choose your tracker and how DNA reaches it. DNA tests the real
+          connection before anything is saved, and never stores a secret as
+          plain text.
         </Text>
       </Flex>
 
@@ -213,20 +225,25 @@ export function TrackerSetup({ currentConnector }: Props) {
           onChange={(e) => setSmokeEmail(e.target.value)}
         />
         <Text size="1" color="gray">
-          DNA reads this person's projects, playlists and versions to prove the whole
-          path works. Read-only.
+          DNA reads this person's projects, playlists and versions to prove the
+          whole path works. Read-only.
         </Text>
       </Flex>
 
       <Flex gap="3" align="center">
-        <Button onClick={() => void test()} disabled={!formValid || run.isPending}>
+        <Button
+          onClick={() => void test()}
+          disabled={!formValid || run.isPending}
+        >
           {run.isPending ? <Spinner /> : 'Test connection'}
         </Button>
         <Button
           variant="solid"
           color="green"
           onClick={() => void save()}
-          disabled={!isFresh || !canSave(report) || run.isPending || !!savedRevision}
+          disabled={
+            !isFresh || !canSave(report) || run.isPending || !!savedRevision
+          }
           title={
             !isFresh && report
               ? 'The settings changed since the last test. Test again before saving.'
@@ -249,7 +266,9 @@ export function TrackerSetup({ currentConnector }: Props) {
         <Callout.Root color="red" role="alert">
           <Callout.Text>
             {error.message}
-            {error.stale ? ' Reload the page to see the latest, then try again.' : ''}
+            {error.stale
+              ? ' Reload the page to see the latest, then try again.'
+              : ''}
           </Callout.Text>
           {error.issues.length > 0 && (
             <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
@@ -275,7 +294,11 @@ export function TrackerSetup({ currentConnector }: Props) {
             Reload this page to see it in the app.
           </Callout.Text>
           <Flex mt="2">
-            <Button size="1" variant="soft" onClick={() => window.location.reload()}>
+            <Button
+              size="1"
+              variant="soft"
+              onClick={() => window.location.reload()}
+            >
               Reload now
             </Button>
           </Flex>

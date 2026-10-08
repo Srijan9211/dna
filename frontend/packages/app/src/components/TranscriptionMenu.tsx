@@ -371,12 +371,22 @@ export function TranscriptionMenu({
 
   const renderMainButtonContent = () => {
     if (collapsed) {
-      return <PulsingPhone size={18} color={phoneIconColor} $shouldPulse={shouldPulseYellow} />;
+      return (
+        <PulsingPhone
+          size={18}
+          color={phoneIconColor}
+          $shouldPulse={shouldPulseYellow}
+        />
+      );
     }
 
     return (
       <>
-        <PulsingPhone size={14} color={phoneIconColor} $shouldPulse={shouldPulseYellow} />
+        <PulsingPhone
+          size={14}
+          color={phoneIconColor}
+          $shouldPulse={shouldPulseYellow}
+        />
         {isActive ? (
           <>
             <StatusIndicator $status={currentStatus} />

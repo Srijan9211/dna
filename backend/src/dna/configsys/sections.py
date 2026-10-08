@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterable, Mapping
 from typing import Annotated, Any, Literal, Optional
+from urllib.parse import urlsplit
 
 from pydantic import BeforeValidator, field_validator, model_validator
 
@@ -156,6 +157,21 @@ class StorageSection(Section):
 # ── prodtrack ────────────────────────────────────────────────────────────────
 
 
+def _check_tracker_url(value: Optional[str]) -> Optional[str]:
+    """A tracker URL must be http(s) with a host and carry no credentials.
+
+    Credentials embedded in a URL end up in logs and error messages; any other scheme
+    (file:, ftp:, gopher: ...) is never a tracker."""
+    if value is None or value == "":
+        return value
+    parts = urlsplit(value.strip())
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise ValueError("must be an http:// or https:// URL with a host name")
+    if parts.username or parts.password:
+        raise ValueError("must not contain a user name or password")
+    return value.strip().rstrip("/")
+
+
 class ShotgridConnection(Section):
     url: Optional[str] = setting(None, env="SHOTGRID_URL")
     script_name: Optional[str] = setting(None, env="SHOTGRID_SCRIPT_NAME")
@@ -181,6 +197,11 @@ class ShotgridConnection(Section):
             return "onprem" if v.strip().lower() == "onprem" else "cloud"
         return v
 
+    @field_validator("url")
+    @classmethod
+    def _url(cls, v: Optional[str]) -> Optional[str]:
+        return _check_tracker_url(v)
+
 
 class AyonConnection(Section):
     url: Optional[str] = setting(None, env="AYON_URL")
@@ -199,6 +220,11 @@ class AyonConnection(Section):
     )
     timeout: float = setting(30.0, env="AYON_TIMEOUT", gt=0, description="Seconds.")
 
+    @field_validator("url")
+    @classmethod
+    def _url(cls, v: Optional[str]) -> Optional[str]:
+        return _check_tracker_url(v)
+
 
 class MockConnection(Section):
     api_base_url: str = setting("http://localhost:8000", env="API_BASE_URL")
@@ -211,9 +237,7 @@ class ProdtrackSection(Section):
         reload="restart",
         description="shotgrid | ayon | mock (ftrack and kitsu follow).",
     )
-    startup_check_timeout: float = setting(
-        10.0, env="SG_STARTUP_CHECK_TIMEOUT", gt=0
-    )
+    startup_check_timeout: float = setting(10.0, env="SG_STARTUP_CHECK_TIMEOUT", gt=0)
     shotgrid: ShotgridConnection = setting(default_factory=ShotgridConnection)
     ayon: AyonConnection = setting(default_factory=AyonConnection)
     mock: MockConnection = setting(default_factory=MockConnection)
@@ -242,9 +266,7 @@ class ProdtrackSection(Section):
         from dna.prodtrack_providers.profile import has_profile, load_profile
 
         if has_profile(self.connector, self.profile_path):
-            load_profile(
-                self.connector, path=self.profile_path, overrides=self.profile
-            )
+            load_profile(self.connector, path=self.profile_path, overrides=self.profile)
         elif self.profile:
             raise ValueError(
                 f"prodtrack.profile has overrides but connector '{self.connector}' "
@@ -267,7 +289,9 @@ class LlmProfile(Section):
 
 
 class LlmSection(Section):
-    provider: str = setting("openai", env="LLM_PROVIDER", description="Default profile.")
+    provider: str = setting(
+        "openai", env="LLM_PROVIDER", description="Default profile."
+    )
     profiles: dict[str, LlmProfile] = setting(default_factory=dict)
 
     @field_validator("provider")
@@ -359,9 +383,7 @@ class ContentSection(Section):
     default_note_prompt_path: Optional[str] = setting(
         None, env="DNA_DEFAULT_NOTE_PROMPT_PATH"
     )
-    glossary_global_path: Optional[str] = setting(
-        None, env="DNA_GLOSSARY_GLOBAL_PATH"
-    )
+    glossary_global_path: Optional[str] = setting(None, env="DNA_GLOSSARY_GLOBAL_PATH")
 
 
 # ── frontend ─────────────────────────────────────────────────────────────────
@@ -377,23 +399,33 @@ class FrontendSection(Section):
     """
 
     feature_transcription: Optional[bool] = setting(
-        None, env="DNA_FEATURE_TRANSCRIPTION", description="Force transcription on/off for everyone."
+        None,
+        env="DNA_FEATURE_TRANSCRIPTION",
+        description="Force transcription on/off for everyone.",
     )
     feature_in_review: Optional[bool] = setting(
-        None, env="DNA_FEATURE_IN_REVIEW", description="Force the in-review view on/off for everyone."
+        None,
+        env="DNA_FEATURE_IN_REVIEW",
+        description="Force the in-review view on/off for everyone.",
     )
     feature_ai: Optional[bool] = setting(
-        None, env="DNA_FEATURE_AI", description="Force AI note generation on/off for everyone."
+        None,
+        env="DNA_FEATURE_AI",
+        description="Force AI note generation on/off for everyone.",
     )
     ws_url: Optional[str] = setting(
-        None, env="DNA_WS_URL", description="WebSocket URL for live events, if not derivable from the page."
+        None,
+        env="DNA_WS_URL",
+        description="WebSocket URL for live events, if not derivable from the page.",
     )
     prodtrack_tab_sync_extension_id: Optional[str] = setting(
         None,
         env="DNA_PRODTRACK_TAB_SYNC_EXTENSION_ID",
         description="Browser extension id that keeps a tracker tab in sync with the selected version.",
     )
-    dev_mode: bool = setting(False, env="DNA_DEV_MODE", description="Show developer-only UI.")
+    dev_mode: bool = setting(
+        False, env="DNA_DEV_MODE", description="Show developer-only UI."
+    )
 
 
 # ── admin ────────────────────────────────────────────────────────────────────
@@ -412,7 +444,7 @@ class AdminSection(Section):
         default_factory=list,
         env="DNA_CONFIG_ADMINS",
         reload="restart",
-        description="Emails allowed to change configuration (case-insensitive).",
+        description="Who may change configuration (case-insensitive): tracker logins for users who sign in through a tracker (ShotGrid, AYON), emails for Google sign-in.",
     )
     persist: bool = setting(
         False,

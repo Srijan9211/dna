@@ -31,6 +31,17 @@ def is_ref(value: Any) -> bool:
     )
 
 
+def ref_target(value: str) -> Optional[tuple[str, str]]:
+    """``("env", NAME)`` or ``("file", PATH)`` for a reference, else None."""
+    env_match = _ENV_REF.match(value)
+    if env_match is not None:
+        return "env", env_match.group(1)
+    file_match = _FILE_REF.match(value)
+    if file_match is not None:
+        return "file", file_match.group(1)
+    return None
+
+
 def resolve_ref(value: str, environ: Mapping[str, str]) -> str:
     """Resolve one reference.  Raises ``KeyError``/``OSError`` on failure."""
     env_match = _ENV_REF.match(value)

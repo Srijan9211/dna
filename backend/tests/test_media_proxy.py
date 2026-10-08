@@ -3,10 +3,10 @@
 import time
 from unittest import mock
 
+import main
 import pytest
 from fastapi.testclient import TestClient
 
-import main
 from dna import configsys, media_proxy
 from dna.media_proxy import MediaStream, sign_token, verify_token
 from dna.models.entity import Version
@@ -34,14 +34,21 @@ def token(**kw):
 
 
 def test_a_token_verifies_and_carries_the_user():
-    claims = verify_token(token(), version_id="demo:abc", kind="thumbnail", secret=SECRET)
-    assert claims["u"] == "bob" and claims["v"] == "demo:abc" and claims["k"] == "thumbnail"
+    claims = verify_token(
+        token(), version_id="demo:abc", kind="thumbnail", secret=SECRET
+    )
+    assert (
+        claims["u"] == "bob"
+        and claims["v"] == "demo:abc"
+        and claims["k"] == "thumbnail"
+    )
 
 
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda t: t[:-2] + ("AA" if not t.endswith("AA") else "BB"),  # signature tampered
+        lambda t: t[:-2]
+        + ("AA" if not t.endswith("AA") else "BB"),  # signature tampered
         lambda t: "x" + t,  # body tampered
         lambda t: t.split(".")[0],  # signature stripped
         lambda t: "",
@@ -51,7 +58,9 @@ def test_a_token_verifies_and_carries_the_user():
 )
 def test_a_tampered_or_malformed_token_is_rejected_uniformly(mutate):
     with pytest.raises(ValueError, match="^Invalid media link.$"):
-        verify_token(mutate(token()), version_id="demo:abc", kind="thumbnail", secret=SECRET)
+        verify_token(
+            mutate(token()), version_id="demo:abc", kind="thumbnail", secret=SECRET
+        )
 
 
 def test_a_token_is_bound_to_its_version_and_kind():
@@ -66,12 +75,19 @@ def test_a_token_expires():
     t = token(ttl=60, now=1000.0)
     verify_token(t, version_id="demo:abc", kind="thumbnail", secret=SECRET, now=1059.0)
     with pytest.raises(ValueError, match="expired"):
-        verify_token(t, version_id="demo:abc", kind="thumbnail", secret=SECRET, now=1061.0)
+        verify_token(
+            t, version_id="demo:abc", kind="thumbnail", secret=SECRET, now=1061.0
+        )
 
 
 def test_a_token_signed_with_another_secret_is_rejected():
     with pytest.raises(ValueError, match="Invalid media link"):
-        verify_token(token(secret="a" * 40), version_id="demo:abc", kind="thumbnail", secret="b" * 40)
+        verify_token(
+            token(secret="a" * 40),
+            version_id="demo:abc",
+            kind="thumbnail",
+            secret="b" * 40,
+        )
 
 
 def test_without_a_jwt_secret_tokens_still_work_within_the_process():
@@ -82,9 +98,14 @@ def test_without_a_jwt_secret_tokens_still_work_within_the_process():
 
 
 def test_integer_ids_round_trip():
-    claims = verify_token(token(version_id=1001), version_id=1001, kind="thumbnail", secret=SECRET)
+    claims = verify_token(
+        token(version_id=1001), version_id=1001, kind="thumbnail", secret=SECRET
+    )
     assert claims["v"] == 1001
-    assert media_proxy.media_url(1001, "thumbnail", "T") == "/media/versions/1001/thumbnail?token=T"
+    assert (
+        media_proxy.media_url(1001, "thumbnail", "T")
+        == "/media/versions/1001/thumbnail?token=T"
+    )
 
 
 def test_an_unknown_kind_cannot_be_signed():
@@ -109,9 +130,15 @@ class MediaProvider:
             raise AyonNotFound("no reviewable media")
         return MediaStream(
             206 if range_header else 200,
-            {"Content-Type": "video/mp4", "Content-Range": "bytes 0-2/10", "X-Internal": "no"}
-            if range_header
-            else {"Content-Type": "image/jpeg"},
+            (
+                {
+                    "Content-Type": "video/mp4",
+                    "Content-Range": "bytes 0-2/10",
+                    "X-Internal": "no",
+                }
+                if range_header
+                else {"Content-Type": "image/jpeg"}
+            ),
             iter([b"ab", b"c"]),
             closed,
         )
@@ -133,7 +160,9 @@ def media(monkeypatch):
 
 
 def url(version_id="demo:abc", kind="thumbnail", **kw):
-    return media_proxy.media_url(version_id, kind, token(version_id=version_id, kind=kind, **kw))
+    return media_proxy.media_url(
+        version_id, kind, token(version_id=version_id, kind=kind, **kw)
+    )
 
 
 def test_a_valid_link_streams_the_media_as_the_tokens_user(media):
@@ -149,7 +178,10 @@ def test_a_valid_link_streams_the_media_as_the_tokens_user(media):
 def test_range_requests_are_relayed_so_video_can_seek(media):
     client, made = media
     response = client.get(url(kind="movie"), headers={"Range": "bytes=0-2"})
-    assert response.status_code == 206 and response.headers["content-range"] == "bytes 0-2/10"
+    assert (
+        response.status_code == 206
+        and response.headers["content-range"] == "bytes 0-2/10"
+    )
     assert made[0].opened[0][2] == "bytes=0-2"
 
 
@@ -157,7 +189,10 @@ def test_only_safe_tracker_headers_reach_the_browser():
     # AyonProvider.open_media whitelists headers; the route adds only Cache-Control.
     from dna.prodtrack_providers.ayon import AyonProvider
 
-    response = mock.Mock(status_code=200, headers={"Content-Type": "x", "Set-Cookie": "s=1", "X-Internal": "1"})
+    response = mock.Mock(
+        status_code=200,
+        headers={"Content-Type": "x", "Set-Cookie": "s=1", "X-Internal": "1"},
+    )
     response.iter_content.return_value = iter([])
     client = mock.Mock()
     client.request.return_value = response
@@ -202,7 +237,11 @@ def test_media_the_tracker_does_not_have_is_404(media):
 
 def test_a_connector_that_serves_media_directly_is_404_not_500(media, monkeypatch):
     client, _ = media
-    monkeypatch.setattr(main, "get_prodtrack_provider", lambda **kw: mock.Mock(open_media=mock.Mock(side_effect=NotImplementedError)))
+    monkeypatch.setattr(
+        main,
+        "get_prodtrack_provider",
+        lambda **kw: mock.Mock(open_media=mock.Mock(side_effect=NotImplementedError)),
+    )
     assert client.get(url()).status_code == 404
 
 
@@ -211,7 +250,12 @@ def test_a_connector_that_serves_media_directly_is_404_not_500(media, monkeypatc
 
 def versions():
     return [
-        Version(id="demo:v1", name="a", thumbnail="http://ayon/secret-thumb", movie_path="http://ayon/secret-movie"),
+        Version(
+            id="demo:v1",
+            name="a",
+            thumbnail="http://ayon/secret-thumb",
+            movie_path="http://ayon/secret-movie",
+        ),
         Version(id="demo:v2", name="b"),  # no media at all
     ]
 
@@ -224,7 +268,12 @@ def test_listings_replace_tracker_urls_with_signed_proxy_urls(media):
     assert vs[0].movie_path.startswith("/media/versions/demo:v1/movie?token=")
     assert vs[1].thumbnail is None and vs[1].movie_path is None
     assert "ayon" not in vs[0].thumbnail  # the tracker URL never reaches the browser
-    claims = verify_token(vs[0].thumbnail.split("token=")[1], version_id="demo:v1", kind="thumbnail", secret=SECRET)
+    claims = verify_token(
+        vs[0].thumbnail.split("token=")[1],
+        version_id="demo:v1",
+        kind="thumbnail",
+        secret=SECRET,
+    )
     assert claims["u"] == "bob"
 
 
@@ -250,6 +299,55 @@ def test_the_listing_routes_apply_it_end_to_end(media, monkeypatch):
     monkeypatch.setattr(main, "get_prodtrack_provider", lambda **kw: Listing("bob"))
     body = client.get("/playlists/demo:L1/versions").json()
     assert body[0]["thumbnail"].startswith("/media/versions/demo:v1/thumbnail?token=")
-    assert client.get("/version/demo:v1").json()["movie_path"].startswith("/media/versions/demo:v1/movie?token=")
+    assert (
+        client.get("/version/demo:v1")
+        .json()["movie_path"]
+        .startswith("/media/versions/demo:v1/movie?token=")
+    )
     # and the link it handed out actually works
     assert client.get(body[0]["thumbnail"]).status_code == 200
+
+
+def test_the_signing_key_is_derived_not_the_raw_secret():
+    import hashlib
+    import hmac
+
+    from dna import media_proxy
+
+    token = media_proxy.sign_token(
+        version_id="v", kind="thumbnail", login=None, secret="s"
+    )
+    body, _, signature = token.partition(".")
+    raw = hmac.new(b"s", body.encode(), hashlib.sha256).digest()
+    assert media_proxy._unb64(signature) != raw
+
+
+def test_access_logs_never_contain_the_token():
+    import logging
+
+    from dna import media_proxy
+
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        (
+            "127.0.0.1:1",
+            "GET",
+            "/media/versions/a/thumbnail?token=abc.def&x=1",
+            "1.1",
+            200,
+        ),
+        None,
+    )
+    media_proxy.RedactTokens().filter(record)
+    assert "abc.def" not in record.getMessage()
+    assert "token=***" in record.getMessage() and "x=1" in record.getMessage()
+
+
+def test_a_missing_secret_is_reported_as_unstable():
+    from dna import media_proxy
+
+    assert media_proxy.has_stable_key("secret") and not media_proxy.has_stable_key(None)

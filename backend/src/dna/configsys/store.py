@@ -107,13 +107,22 @@ class MemoryOverrideStore:
         with self._lock:
             return list(reversed(self._revisions))[:limit]
 
-    def append(self, overrides, *, actor, note="", changed=(), expected_version=None) -> Revision:
+    def append(
+        self, overrides, *, actor, note="", changed=(), expected_version=None
+    ) -> Revision:
         with self._lock:
             current = self._revisions[-1].version if self._revisions else 0
             if expected_version is not None and expected_version != current:
-                raise StaleRevision(f"expected revision {expected_version}, store is at {current}")
+                raise StaleRevision(
+                    f"expected revision {expected_version}, store is at {current}"
+                )
             revision = Revision(
-                current + 1, copy.deepcopy(overrides), actor, time.time(), note, tuple(changed)
+                current + 1,
+                copy.deepcopy(overrides),
+                actor,
+                time.time(),
+                note,
+                tuple(changed),
             )
             self._revisions.append(revision)
             return revision
@@ -126,11 +135,15 @@ class MongoOverrideStore:
     appends race safely: exactly one wins, the other gets ``StaleRevision``.
     """
 
-    def __init__(self, collection: Any = None, *, url: str = "", db_name: str = "dna") -> None:
+    def __init__(
+        self, collection: Any = None, *, url: str = "", db_name: str = "dna"
+    ) -> None:
         if collection is None:
             from pymongo import MongoClient
 
-            collection = MongoClient(url, serverSelectionTimeoutMS=5000)[db_name]["config_revisions"]
+            collection = MongoClient(url, serverSelectionTimeoutMS=5000)[db_name][
+                "config_revisions"
+            ]
         self._c = collection
 
     def _latest_doc(self) -> Optional[dict]:
@@ -146,18 +159,34 @@ class MongoOverrideStore:
         return Revision.from_doc(doc) if doc else None
 
     def history(self, limit: int = 50) -> list[Revision]:
-        return [Revision.from_doc(d) for d in self._c.find({}, sort=[("version", -1)], limit=limit)]
+        return [
+            Revision.from_doc(d)
+            for d in self._c.find({}, sort=[("version", -1)], limit=limit)
+        ]
 
-    def append(self, overrides, *, actor, note="", changed=(), expected_version=None) -> Revision:
+    def append(
+        self, overrides, *, actor, note="", changed=(), expected_version=None
+    ) -> Revision:
         from pymongo.errors import DuplicateKeyError
 
         latest = self._latest_doc()
         current = latest["version"] if latest else 0
         if expected_version is not None and expected_version != current:
-            raise StaleRevision(f"expected revision {expected_version}, store is at {current}")
-        revision = Revision(current + 1, copy.deepcopy(overrides), actor, time.time(), note, tuple(changed))
+            raise StaleRevision(
+                f"expected revision {expected_version}, store is at {current}"
+            )
+        revision = Revision(
+            current + 1,
+            copy.deepcopy(overrides),
+            actor,
+            time.time(),
+            note,
+            tuple(changed),
+        )
         try:
             self._c.insert_one(revision.to_doc())
         except DuplicateKeyError as exc:
-            raise StaleRevision("another administrator saved at the same moment") from exc
+            raise StaleRevision(
+                "another administrator saved at the same moment"
+            ) from exc
         return revision

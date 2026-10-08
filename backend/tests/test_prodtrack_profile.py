@@ -158,7 +158,13 @@ def test_mapper_translates_in_both_directions():
     assert m.tracker_field("version", "task") == "sg_task"  # a link field
     assert m.tracker_field_or_none("version", "nonexistent") is None
     assert m.read_fields("playlist") == [
-        "id", "code", "description", "project", "created_at", "updated_at", "versions",
+        "id",
+        "code",
+        "description",
+        "project",
+        "created_at",
+        "updated_at",
+        "versions",
     ]
     assert m.to_tracker_filters(
         "version", [{"field": "status", "operator": "is", "value": "rev"}]
@@ -169,11 +175,16 @@ def test_mapper_translates_in_both_directions():
 
 def test_mapper_renders_urls_from_templates():
     m = ProfileMapper(load_profile("shotgrid"))
-    url = m.url("version_detail", base="https://s.example/", kind="version", entity_id=7)
+    url = m.url(
+        "version_detail", base="https://s.example/", kind="version", entity_id=7
+    )
     assert url == "https://s.example/detail/Version/7"
     assert m.url("version_detail", base="", kind="version", entity_id=7) is None
     mock_mapper = ProfileMapper(load_profile("mock"))
-    assert mock_mapper.url("version_detail", base="https://x", kind="version", entity_id=1) is None
+    assert (
+        mock_mapper.url("version_detail", base="https://x", kind="version", entity_id=1)
+        is None
+    )
 
 
 # ── capabilities ─────────────────────────────────────────────────────────────
@@ -229,7 +240,9 @@ def test_studio_renames_the_status_field_and_dna_follows_with_no_code_change(
     with mock.patch.object(sg_module, "Shotgun", return_value=fake):
         provider = ShotgridProvider(url="https://s", script_name="a", api_key="k")
         provider.update_version_status(1, "apr")
-        found = provider.find("version", [{"field": "status", "operator": "is", "value": "apr"}])
+        found = provider.find(
+            "version", [{"field": "status", "operator": "is", "value": "apr"}]
+        )
 
     fake.update.assert_called_once_with("Version", 1, {"sg_review_status": "apr"})
     query = fake.find.call_args

@@ -45,7 +45,10 @@ function SectionEditor({ section, values, version, onClose }: EditorProps) {
   const [note, setNote] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const [issues, setIssues] = useState<ConfigIssue[]>([]);
-  const [preview, setPreview] = useState<{ changed: string[]; restart: string[] } | null>(null);
+  const [preview, setPreview] = useState<{
+    changed: string[];
+    restart: string[];
+  } | null>(null);
   const [error, setError] = useState<AdminError | null>(null);
 
   const parsed = parseJsonObject(text);
@@ -56,7 +59,10 @@ function SectionEditor({ section, values, version, onClose }: EditorProps) {
   });
   const save = useMutation({
     mutationFn: (value: Record<string, unknown>) =>
-      apiHandler.updateConfigSection(section, value, { note, expectedVersion: version }),
+      apiHandler.updateConfigSection(section, value, {
+        note,
+        expectedVersion: version,
+      }),
   });
 
   const onValidate = async () => {
@@ -71,7 +77,10 @@ function SectionEditor({ section, values, version, onClose }: EditorProps) {
     try {
       const result = await validate.mutateAsync(parsed.value);
       if (result.valid) {
-        setPreview({ changed: result.changed, restart: result.restart_required });
+        setPreview({
+          changed: result.changed,
+          restart: result.restart_required,
+        });
       } else {
         setIssues(result.issues);
       }
@@ -97,9 +106,9 @@ function SectionEditor({ section, values, version, onClose }: EditorProps) {
   return (
     <Flex direction="column" gap="3">
       <Text size="2" color="gray">
-        Changes to <Code>{section}</Code> are checked by the server before they are
-        saved, recorded with your name, and can be rolled back from History. Secrets
-        must be references such as <Code>{'${env:NAME}'}</Code>.
+        Changes to <Code>{section}</Code> are checked by the server before they
+        are saved, recorded with your name, and can be rolled back from History.
+        Secrets must be references such as <Code>{'${env:NAME}'}</Code>.
       </Text>
       <TextArea
         aria-label={`${section} settings (JSON)`}
@@ -162,10 +171,17 @@ function SectionEditor({ section, values, version, onClose }: EditorProps) {
         <Button variant="soft" color="gray" onClick={onClose}>
           Cancel
         </Button>
-        <Button variant="soft" onClick={() => void onValidate()} disabled={validate.isPending}>
+        <Button
+          variant="soft"
+          onClick={() => void onValidate()}
+          disabled={validate.isPending}
+        >
           {validate.isPending ? <Spinner /> : 'Validate'}
         </Button>
-        <Button onClick={() => void onSave()} disabled={!parsed.ok || save.isPending}>
+        <Button
+          onClick={() => void onSave()}
+          disabled={!parsed.ok || save.isPending}
+        >
           {save.isPending ? <Spinner /> : 'Save'}
         </Button>
       </Flex>
@@ -191,7 +207,10 @@ function SectionCard({
           <Flex gap="2" align="center">
             <Heading size="3">{name}</Heading>
             {locked && (
-              <Badge color="gray" title="Set in the config files or environment only">
+              <Badge
+                color="gray"
+                title="Set in the config files or environment only"
+              >
                 <Lock size={11} aria-hidden /> locked
               </Badge>
             )}
@@ -209,7 +228,9 @@ function SectionCard({
                 <Table.RowHeaderCell>
                   <Code variant="ghost">{row.path.slice(name.length + 1)}</Code>
                 </Table.RowHeaderCell>
-                <Table.Cell style={{ wordBreak: 'break-all' }}>{row.value}</Table.Cell>
+                <Table.Cell style={{ wordBreak: 'break-all' }}>
+                  {row.value}
+                </Table.Cell>
                 <Table.Cell>
                   <Text size="1" color="gray">
                     {describeSource(data.provenance[row.path])}
@@ -240,15 +261,23 @@ export function SettingsPanel() {
   return (
     <Flex direction="column" gap="3">
       <Text size="2" color="gray">
-        The configuration in effect, and where each value comes from. Locked sections
-        hold security and start-up settings and are changed in the config files or
-        environment, never from here.
+        The configuration in effect, and where each value comes from. Locked
+        sections hold security and start-up settings and are changed in the
+        config files or environment, never from here.
       </Text>
       {Object.keys(data.config).map((name) => (
-        <SectionCard key={name} name={name} data={data} onEdit={() => setEditing(name)} />
+        <SectionCard
+          key={name}
+          name={name}
+          data={data}
+          onEdit={() => setEditing(name)}
+        />
       ))}
 
-      <Dialog.Root open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
+      <Dialog.Root
+        open={editing !== null}
+        onOpenChange={(open) => !open && setEditing(null)}
+      >
         <Dialog.Content maxWidth="720px">
           <Dialog.Title>Edit {editing}</Dialog.Title>
           {editing && (

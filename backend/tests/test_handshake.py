@@ -13,8 +13,11 @@ from dna.prodtrack_providers.handshake import (
     run_handshake,
     validate_profile,
 )
+from dna.prodtrack_providers.prodtrack_provider_base import (
+    ProdtrackAuthError,
+    ProdtrackProviderBase,
+)
 from dna.prodtrack_providers.profile import load_profile
-from dna.prodtrack_providers.prodtrack_provider_base import ProdtrackAuthError, ProdtrackProviderBase
 from dna.prodtrack_providers.shotgrid import ShotgridProvider
 
 
@@ -63,7 +66,11 @@ def test_a_missing_field_fails_and_suggests_the_closest_real_one():
     (s,) = [s for s in suggestions if "sg_status_list" in s.problem]
     assert s.options[0] == "sg_status" and "status" in s.problem
     # the suggestion is a ready-to-apply override that renames the field
-    assert s.override == {"entities": {"version": {"fields": {"sg_status_list": None, "sg_status": "status"}}}}
+    assert s.override == {
+        "entities": {
+            "version": {"fields": {"sg_status_list": None, "sg_status": "status"}}
+        }
+    }
 
 
 def test_the_suggested_override_actually_fixes_the_profile():
@@ -82,23 +89,37 @@ def test_an_entity_the_tracker_lacks_fails_with_a_suggestion():
     schema.known_entities.discard("Playlist")
     schema.known_entities.add("Playlists")
     checks, suggestions = validate_profile(profile, schema)
-    assert any(c.status == "fail" and "no entity 'Playlist'" in c.message for c in checks)
+    assert any(
+        c.status == "fail" and "no entity 'Playlist'" in c.message for c in checks
+    )
     assert any(s.options == ["Playlists"] for s in suggestions)
 
 
 def test_folder_types_are_checked_and_corrected():
-    profile = load_profile("ayon", overrides={"entities": {"shot": {"where": {"folderType": ["Shotz", "Sequence"]}}}})
+    profile = load_profile(
+        "ayon",
+        overrides={
+            "entities": {"shot": {"where": {"folderType": ["Shotz", "Sequence"]}}}
+        },
+    )
     schema = schema_for(profile)
     checks, suggestions = validate_profile(profile, schema)
-    assert any(c.name == "mapping.shot" and c.status == "fail" and "Shotz" in c.message for c in checks)
+    assert any(
+        c.name == "mapping.shot" and c.status == "fail" and "Shotz" in c.message
+        for c in checks
+    )
     (s,) = [s for s in suggestions if "folder type" in s.problem]
     assert s.options == ["Shot"]
-    assert s.override == {"entities": {"shot": {"where": {"folderType": ["Shot", "Sequence"]}}}}
+    assert s.override == {
+        "entities": {"shot": {"where": {"folderType": ["Shot", "Sequence"]}}}
+    }
 
 
 def test_an_entity_the_connector_could_not_introspect_is_skipped_not_blamed():
     profile = load_profile("shotgrid")
-    schema = TrackerSchema(known_entities={b.source for b in profile.entities.values()})  # no field info
+    schema = TrackerSchema(
+        known_entities={b.source for b in profile.entities.values()}
+    )  # no field info
     checks, _ = validate_profile(profile, schema)
     assert {c.status for c in checks} == {"skip"}
 
@@ -108,7 +129,12 @@ def test_an_entity_the_connector_could_not_introspect_is_skipped_not_blamed():
 
 class StubProvider(ProdtrackProviderBase):
     def __init__(self, *, connect=None, schema=None, adapter=(), smoke=True):
-        self._connect, self._schema, self._adapter, self._smoke = connect, schema, adapter, smoke
+        self._connect, self._schema, self._adapter, self._smoke = (
+            connect,
+            schema,
+            adapter,
+            smoke,
+        )
 
     def check_connection(self):
         if isinstance(self._connect, Exception):
@@ -153,12 +179,17 @@ def statuses(report):
 
 
 def test_a_healthy_connector_reports_ok_and_what_it_supports():
-    report = run(StubProvider(connect={"server_version": "9.9"}, schema=schema_for(PROFILE)), smoke_email="a@x.com")
+    report = run(
+        StubProvider(connect={"server_version": "9.9"}, schema=schema_for(PROFILE)),
+        smoke_email="a@x.com",
+    )
     assert report.ok and report.contract == "dna.prodtrack/1"
     assert report.capabilities["impersonation"] == "sudo_header"
     s = statuses(report)
     assert s["describe"] == s["connect"] == s["discover"] == s["smoke"] == "ok"
-    assert next(c for c in report.checks if c.name == "connect").details == {"server_version": "9.9"}
+    assert next(c for c in report.checks if c.name == "connect").details == {
+        "server_version": "9.9"
+    }
     assert "2 version(s)" in next(c for c in report.checks if c.name == "smoke").message
     assert report.schema["version"] == "Test 1"
 
@@ -173,44 +204,78 @@ def test_incomplete_connection_settings_fail_the_connect_step_without_raising():
 
 
 def test_a_connection_failure_stops_the_run_and_is_reported():
-    report = run(StubProvider(connect=ProdtrackAuthError("AYON rejected the credentials")))
+    report = run(
+        StubProvider(connect=ProdtrackAuthError("AYON rejected the credentials"))
+    )
     assert not report.ok and "discover" not in statuses(report)
-    assert "rejected the credentials" in next(c for c in report.checks if c.name == "connect").message
+    assert (
+        "rejected the credentials"
+        in next(c for c in report.checks if c.name == "connect").message
+    )
 
 
 def test_a_connector_that_cannot_introspect_is_skipped_not_failed():
     report = run(StubProvider())
-    assert report.ok and statuses(report)["connect"] == statuses(report)["discover"] == "skip"
+    assert (
+        report.ok
+        and statuses(report)["connect"] == statuses(report)["discover"] == "skip"
+    )
 
 
 def test_a_schema_failure_is_reported_but_does_not_hide_the_connection_result():
     report = run(StubProvider(connect={}, schema=RuntimeError("boom")))
-    assert not report.ok and statuses(report)["connect"] == "ok" and statuses(report)["discover"] == "fail"
+    assert (
+        not report.ok
+        and statuses(report)["connect"] == "ok"
+        and statuses(report)["discover"] == "fail"
+    )
 
 
 def test_adapter_issues_and_schema_notes_join_the_report():
     schema = schema_for(PROFILE)
     schema.notes = ["no projects visible"]
-    report = run(StubProvider(connect={}, schema=schema, adapter=[Check("adapter.x", "fail", "bad name")]))
+    report = run(
+        StubProvider(
+            connect={}, schema=schema, adapter=[Check("adapter.x", "fail", "bad name")]
+        )
+    )
     assert not report.ok
-    assert statuses(report)["adapter.x"] == "fail" and statuses(report)["note"] == "warn"
+    assert (
+        statuses(report)["adapter.x"] == "fail" and statuses(report)["note"] == "warn"
+    )
 
 
 def test_warnings_do_not_block_but_failures_do():
-    assert run(StubProvider(connect={}, schema=schema_for(PROFILE), adapter=[Check("a", "warn", "careful")])).ok
-    assert not run(StubProvider(connect={}, schema=schema_for(PROFILE), adapter=[Check("a", "fail", "no")])).ok
+    assert run(
+        StubProvider(
+            connect={},
+            schema=schema_for(PROFILE),
+            adapter=[Check("a", "warn", "careful")],
+        )
+    ).ok
+    assert not run(
+        StubProvider(
+            connect={}, schema=schema_for(PROFILE), adapter=[Check("a", "fail", "no")]
+        )
+    ).ok
 
 
 def test_smoke_failure_and_empty_results():
     report = run(StubProvider(connect={}, smoke=False), smoke_email="ghost@x.com")
-    assert not report.ok and "User not found" in next(c for c in report.checks if c.name == "smoke").message
+    assert (
+        not report.ok
+        and "User not found"
+        in next(c for c in report.checks if c.name == "smoke").message
+    )
 
     class Empty(StubProvider):
         def get_playlists_for_project(self, project_id):
             return []
 
     report = run(Empty(connect={}), smoke_email="a@x.com")
-    assert report.ok and statuses(report)["smoke"] == "warn"  # reachable, just nothing to review yet
+    assert (
+        report.ok and statuses(report)["smoke"] == "warn"
+    )  # reachable, just nothing to review yet
 
 
 def test_error_messages_are_one_bounded_line():
@@ -253,8 +318,16 @@ def sg_schema(profile=PROFILE, **removed):
     schema = {b.source: set(b.fields) | set(b.links) for b in profile.entities.values()}
     schema["Version"] |= {"sg_status_list"}
     schema["Note"] |= {"addressings_to", "addressings_cc", "attachments"}
-    schema["CustomEntity01"] = {"code", "project", "sg_playlist", "sg_version_in_review", "sg_meeting_id",
-                                "sg_meeting_date", "sg_platform", "sg_transcript_body"}
+    schema["CustomEntity01"] = {
+        "code",
+        "project",
+        "sg_playlist",
+        "sg_version_in_review",
+        "sg_meeting_id",
+        "sg_meeting_date",
+        "sg_platform",
+        "sg_transcript_body",
+    }
     for key, field in removed.items():
         schema[key.replace("__", "")].discard(field)
     return schema
@@ -262,19 +335,25 @@ def sg_schema(profile=PROFILE, **removed):
 
 def sg_provider(schema, profile=None):
     with mock.patch.object(sg_module, "Shotgun", return_value=FakeSg(schema)):
-        return ShotgridProvider(url="https://s.example", script_name="a", api_key="k", profile=profile)
+        return ShotgridProvider(
+            url="https://s.example", script_name="a", api_key="k", profile=profile
+        )
 
 
 def test_shotgrid_connection_check_runs_a_real_query():
     provider = sg_provider(sg_schema())
     info = provider.check_connection()
     assert info == {"site": "https://s.example", "server_version": "8.4.1"}
-    assert provider.sg.queries[0][0] == "find_one"  # info() alone would not prove the key
+    assert (
+        provider.sg.queries[0][0] == "find_one"
+    )  # info() alone would not prove the key
 
 
 def test_shotgrid_discovery_reads_the_schema_of_the_entities_it_uses():
     schema = sg_provider(sg_schema()).discover_schema()
-    assert "Version" in schema.entities and "sg_status_list" in schema.entities["Version"]
+    assert (
+        "Version" in schema.entities and "sg_status_list" in schema.entities["Version"]
+    )
     assert "CustomEntity01" in schema.entities  # the transcript slot is included
     assert {"Shot", "Playlist"} <= schema.known_entities
 
@@ -291,7 +370,11 @@ def test_shotgrid_end_to_end_handshake_with_a_renamed_status_field():
     assert not report.ok
     failing = {c.name for c in report.checks if c.status == "fail"}
     assert {"mapping.version", "adapter.status_field"} <= failing
-    fix = next(s for s in report.suggestions if "sg_status_list" in s.problem and "Version" in s.problem)
+    fix = next(
+        s
+        for s in report.suggestions
+        if "sg_status_list" in s.problem and "Version" in s.problem
+    )
     assert fix.options[0] == "sg_review_status"
 
 
@@ -301,14 +384,20 @@ def test_shotgrid_adapter_checks_recipient_and_transcript_fields():
     del schema["CustomEntity01"]
     provider = sg_provider(schema)
     found = {c.name: c for c in provider.adapter_issues(provider.discover_schema())}
-    assert found["adapter.note"].status == "fail" and "addressings_cc" in found["adapter.note"].message
+    assert (
+        found["adapter.note"].status == "fail"
+        and "addressings_cc" in found["adapter.note"].message
+    )
     assert found["adapter.transcript"].status == "warn"  # transcripts off is not fatal
 
     partial = sg_schema()
     partial["CustomEntity01"].discard("sg_platform")
     provider = sg_provider(partial)
     found = {c.name: c for c in provider.adapter_issues(provider.discover_schema())}
-    assert found["adapter.transcript"].status == "warn" and "sg_platform" in found["adapter.transcript"].message
+    assert (
+        found["adapter.transcript"].status == "warn"
+        and "sg_platform" in found["adapter.transcript"].message
+    )
 
 
 # ── AYON hooks ───────────────────────────────────────────────────────────────
@@ -317,29 +406,65 @@ def test_shotgrid_adapter_checks_recipient_and_transcript_fields():
 class FakeAyonClient:
     url = "http://ayon.test"
 
-    def __init__(self, *, as_user=None, honours_header=True, projects=("demo",), others=("bob",)):
-        self.as_user, self.honours_header, self.projects, self.others = as_user, honours_header, projects, others
+    def __init__(
+        self, *, as_user=None, honours_header=True, projects=("demo",), others=("bob",)
+    ):
+        self.as_user, self.honours_header, self.projects, self.others = (
+            as_user,
+            honours_header,
+            projects,
+            others,
+        )
 
     def acting_as(self, login):
-        return FakeAyonClient(as_user=login, honours_header=self.honours_header, projects=self.projects, others=self.others)
+        return FakeAyonClient(
+            as_user=login,
+            honours_header=self.honours_header,
+            projects=self.projects,
+            others=self.others,
+        )
 
     def rest(self, method, path, **kw):
         if path == "/api/info":
             return {"releaseInfo": {"version": "1.16.7"}}
         if path == "/api/users/me":
-            return {"name": self.as_user if (self.as_user and self.honours_header) else "svc"}
+            return {
+                "name": (
+                    self.as_user if (self.as_user and self.honours_header) else "svc"
+                )
+            }
         if path == "/api/attributes":
-            return {"attributes": [{"name": "description", "scope": ["folder", "version"]},
-                                   {"name": "fullName", "scope": ["user"]}, {"name": "email", "scope": ["user"]}]}
+            return {
+                "attributes": [
+                    {"name": "description", "scope": ["folder", "version"]},
+                    {"name": "fullName", "scope": ["user"]},
+                    {"name": "email", "scope": ["user"]},
+                ]
+            }
         if path.startswith("/api/projects/"):
-            return {"folderTypes": [{"name": "Shot"}, {"name": "Asset"}], "taskTypes": [{"name": "Lighting"}],
-                    "statuses": [{"name": "Approved", "scope": ["version"]}]}
+            return {
+                "folderTypes": [{"name": "Shot"}, {"name": "Asset"}],
+                "taskTypes": [{"name": "Lighting"}],
+                "statuses": [{"name": "Approved", "scope": ["version"]}],
+            }
         raise AssertionError(path)
 
     def graphql(self, query, variables=None):
         if "projects" in query:
-            return {"projects": {"edges": [{"node": {"name": p, "active": True}} for p in self.projects]}}
-        return {"users": {"edges": [{"node": {"name": n, "active": True}} for n in ("svc", *self.others)]}}
+            return {
+                "projects": {
+                    "edges": [
+                        {"node": {"name": p, "active": True}} for p in self.projects
+                    ]
+                }
+            }
+        return {
+            "users": {
+                "edges": [
+                    {"node": {"name": n, "active": True}} for n in ("svc", *self.others)
+                ]
+            }
+        }
 
 
 def ayon_provider(**kw):
@@ -350,11 +475,17 @@ def ayon_provider(**kw):
 
 def test_ayon_connection_proves_impersonation():
     facts = ayon_provider().check_connection()
-    assert facts == {"server_version": "1.16.7", "service_user": "svc", "impersonation": "verified: acted as 'bob'"}
+    assert facts == {
+        "server_version": "1.16.7",
+        "service_user": "svc",
+        "impersonation": "verified: acted as 'bob'",
+    }
 
 
 def test_ayon_connection_fails_when_the_key_cannot_impersonate():
-    with pytest.raises(ProdtrackAuthError, match="did not act as 'bob'.*answered as 'svc'"):
+    with pytest.raises(
+        ProdtrackAuthError, match="did not act as 'bob'.*answered as 'svc'"
+    ):
         ayon_provider(honours_header=False).check_connection()
 
 
@@ -377,11 +508,18 @@ def test_the_shipped_ayon_profile_validates_against_a_real_shaped_schema():
 
 
 def test_ayon_handshake_catches_a_typo_in_a_custom_attribute():
-    profile = load_profile("ayon", overrides={"entities": {"shot": {"fields": {"attrib.descripton": "description"}}}})
+    profile = load_profile(
+        "ayon",
+        overrides={
+            "entities": {"shot": {"fields": {"attrib.descripton": "description"}}}
+        },
+    )
     provider = ayon_provider()
     report = run_handshake("ayon", profile, lambda p: provider)
     assert not report.ok
-    assert any(s.options and s.options[0] == "attrib.description" for s in report.suggestions)
+    assert any(
+        s.options and s.options[0] == "attrib.description" for s in report.suggestions
+    )
 
 
 def test_ayon_warns_when_the_service_user_sees_no_project():

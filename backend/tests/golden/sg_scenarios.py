@@ -35,7 +35,13 @@ DATA: dict[str, list[dict[str, Any]]] = {
         }
     ],
     "Asset": [
-        {"id": 501, "code": "hero", "description": "Hero", "project": PROJECT, "tasks": []}
+        {
+            "id": 501,
+            "code": "hero",
+            "description": "Hero",
+            "project": PROJECT,
+            "tasks": [],
+        }
     ],
     "Task": [
         {
@@ -219,8 +225,9 @@ def run_scenarios(module: Any) -> dict[str, Any]:
     def factory(url, script_name, api_key, sudo_as_login=None, **_):
         return FakeShotgun(f"sudo:{sudo_as_login}" if sudo_as_login else "script", log)
 
-    with mock.patch.object(module, "Shotgun", side_effect=factory), mock.patch.dict(
-        "os.environ", {"SHOTGRID_TRANSCRIPT_ENTITY": "CustomEntity05"}
+    with (
+        mock.patch.object(module, "Shotgun", side_effect=factory),
+        mock.patch.dict("os.environ", {"SHOTGRID_TRANSCRIPT_ENTITY": "CustomEntity05"}),
     ):
         provider = module.ShotgridProvider(
             url="https://studio.shotgrid.autodesk.com",
@@ -267,19 +274,31 @@ def run_scenarios(module: Any) -> dict[str, Any]:
         run("search_unsupported", lambda: provider.search("a", ["nope"]))
         run("get_user_by_email", lambda: provider.get_user_by_email("ann@x.com"))
         run("get_user_by_email_missing", lambda: provider.get_user_by_email("no@x.com"))
-        run("get_projects_for_user", lambda: provider.get_projects_for_user("ann@x.com"))
+        run(
+            "get_projects_for_user", lambda: provider.get_projects_for_user("ann@x.com")
+        )
         run("get_playlists_for_project", lambda: provider.get_playlists_for_project(10))
         run("create_playlist", lambda: provider.create_playlist(10, "new-list"))
-        run("get_versions_for_playlist", lambda: provider.get_versions_for_playlist(100))
-        run("get_versions_empty_playlist", lambda: provider.get_versions_for_playlist(404))
-        run("add_version_to_playlist_new", lambda: provider.add_version_to_playlist(100, 1003))
+        run(
+            "get_versions_for_playlist", lambda: provider.get_versions_for_playlist(100)
+        )
+        run(
+            "get_versions_empty_playlist",
+            lambda: provider.get_versions_for_playlist(404),
+        )
+        run(
+            "add_version_to_playlist_new",
+            lambda: provider.add_version_to_playlist(100, 1003),
+        )
         run(
             "add_version_to_playlist_present",
             lambda: provider.add_version_to_playlist(100, 1001),
         )
         run("get_version_statuses", lambda: provider.get_version_statuses(10))
         run("get_version_statuses_no_project", lambda: provider.get_version_statuses())
-        run("update_version_status", lambda: provider.update_version_status(1001, "apr"))
+        run(
+            "update_version_status", lambda: provider.update_version_status(1001, "apr")
+        )
         run(
             "update_note",
             lambda: provider.update_note(900, "new text", "new subj", 1001, "apr"),
@@ -332,7 +351,10 @@ def run_scenarios(module: Any) -> dict[str, Any]:
                 author_email="ghost@x.com",
             ),
         )
-        run("attach_file", lambda: provider.attach_file_to_note(900, "/tmp/f.txt", "f.txt"))
+        run(
+            "attach_file",
+            lambda: provider.attach_file_to_note(900, "/tmp/f.txt", "f.txt"),
+        )
         run(
             "publish_transcript",
             lambda: provider.publish_transcript(

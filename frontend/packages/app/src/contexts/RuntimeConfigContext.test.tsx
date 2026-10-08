@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { RuntimeConfigProvider, useRuntimeConfig } from './RuntimeConfigContext';
+import {
+  RuntimeConfigProvider,
+  useRuntimeConfig,
+} from './RuntimeConfigContext';
 
 function Probe() {
   const c = useRuntimeConfig();
@@ -19,17 +22,30 @@ const respond = (body: unknown) =>
 describe('RuntimeConfigProvider', () => {
   it('renders nothing but a loading state until the server answers', async () => {
     let release!: (value: unknown) => void;
-    const fetchImpl = vi.fn(() => new Promise((resolve) => { release = resolve; }));
+    const fetchImpl = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
     render(
-      <RuntimeConfigProvider env={{}} fetchOptions={{ fetchImpl: fetchImpl as unknown as typeof fetch }}>
+      <RuntimeConfigProvider
+        env={{}}
+        fetchOptions={{ fetchImpl: fetchImpl as unknown as typeof fetch }}
+      >
         <Probe />
       </RuntimeConfigProvider>
     );
     expect(screen.getByRole('status')).toHaveTextContent('Loading');
     expect(screen.queryByTestId('auth')).toBeNull(); // no component starts with the wrong login mode
 
-    release({ ok: true, json: () => Promise.resolve({ auth: { provider: 'ayon' } }) });
-    await waitFor(() => expect(screen.getByTestId('auth')).toHaveTextContent('ayon'));
+    release({
+      ok: true,
+      json: () => Promise.resolve({ auth: { provider: 'ayon' } }),
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('auth')).toHaveTextContent('ayon')
+    );
     expect(screen.getByTestId('source')).toHaveTextContent('server');
   });
 
@@ -37,12 +53,18 @@ describe('RuntimeConfigProvider', () => {
     render(
       <RuntimeConfigProvider
         env={{}}
-        fetchOptions={{ fetchImpl: respond({ prodtrack: { labels: { playlist: 'List' } } }) as unknown as typeof fetch }}
+        fetchOptions={{
+          fetchImpl: respond({
+            prodtrack: { labels: { playlist: 'List' } },
+          }) as unknown as typeof fetch,
+        }}
       >
         <Probe />
       </RuntimeConfigProvider>
     );
-    await waitFor(() => expect(screen.getByTestId('label')).toHaveTextContent('List'));
+    await waitFor(() =>
+      expect(screen.getByTestId('label')).toHaveTextContent('List')
+    );
   });
 
   it('falls back to the build-time environment when the server cannot be read', async () => {
@@ -55,14 +77,20 @@ describe('RuntimeConfigProvider', () => {
         <Probe />
       </RuntimeConfigProvider>
     );
-    await waitFor(() => expect(screen.getByTestId('auth')).toHaveTextContent('none'));
+    await waitFor(() =>
+      expect(screen.getByTestId('auth')).toHaveTextContent('none')
+    );
     expect(screen.getByTestId('source')).toHaveTextContent('build');
   });
 
   it('can skip the network entirely', () => {
     const fetchImpl = vi.fn();
     render(
-      <RuntimeConfigProvider env={{ VITE_AUTH_PROVIDER: 'shotgrid' }} skipFetch fetchOptions={{ fetchImpl }}>
+      <RuntimeConfigProvider
+        env={{ VITE_AUTH_PROVIDER: 'shotgrid' }}
+        skipFetch
+        fetchOptions={{ fetchImpl }}
+      >
         <Probe />
       </RuntimeConfigProvider>
     );

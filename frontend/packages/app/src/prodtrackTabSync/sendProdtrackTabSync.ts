@@ -86,7 +86,8 @@ function parsePingResponse(raw: unknown): boolean {
 /** Opens the production-tracking URL in a normal new browser tab (not extension-controlled). */
 export function openProdtrackUrlInUncontrolledNewTab(url: string): void {
   if (!url.startsWith('http')) return;
-  if (typeof window === 'undefined' || typeof window.open !== 'function') return;
+  if (typeof window === 'undefined' || typeof window.open !== 'function')
+    return;
   const opened = window.open(url, '_blank');
   if (opened) {
     opened.opener = null;
@@ -142,7 +143,9 @@ export async function openProdtrackVersionInExtension(
   }
 
   const openOpts =
-    typeof timeoutOrOptions === 'number' ? { timeoutMs: timeoutOrOptions } : timeoutOrOptions;
+    typeof timeoutOrOptions === 'number'
+      ? { timeoutMs: timeoutOrOptions }
+      : timeoutOrOptions;
   const timeoutMs = openOpts.timeoutMs ?? 800;
   const lastKnownTabId = openOpts.tabId;
 

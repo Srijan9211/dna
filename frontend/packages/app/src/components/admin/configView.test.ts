@@ -4,7 +4,10 @@ import { describeSource, flattenConfig } from './configView';
 describe('flattenConfig', () => {
   it('produces dotted paths that match the provenance keys', () => {
     expect(
-      flattenConfig('prodtrack', { connector: 'ayon', ayon: { url: 'http://a', timeout: 30 } })
+      flattenConfig('prodtrack', {
+        connector: 'ayon',
+        ayon: { url: 'http://a', timeout: 30 },
+      })
     ).toEqual([
       { path: 'prodtrack.connector', value: 'ayon' },
       { path: 'prodtrack.ayon.url', value: 'http://a' },
@@ -25,7 +28,9 @@ describe('flattenConfig', () => {
   });
 
   it('shows a masked secret as the mask, never anything else', () => {
-    expect(flattenConfig('p', { api_key: '********' })).toEqual([{ path: 'p.api_key', value: '********' }]);
+    expect(flattenConfig('p', { api_key: '********' })).toEqual([
+      { path: 'p.api_key', value: '********' },
+    ]);
   });
 });
 
@@ -37,5 +42,7 @@ describe('describeSource', () => {
     ['env:AYON_URL', 'environment AYON_URL'],
     ['file:/etc/dna/site.yaml', 'file /etc/dna/site.yaml'],
     ['something', 'something'],
-  ])('%s -> %s', (input, expected) => expect(describeSource(input)).toBe(expected));
+  ])('%s -> %s', (input, expected) =>
+    expect(describeSource(input)).toBe(expected)
+  );
 });

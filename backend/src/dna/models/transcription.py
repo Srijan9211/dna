@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
 from dna.models.ids import EntityId
 
 

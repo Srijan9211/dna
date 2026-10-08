@@ -84,7 +84,10 @@ export function parseJsonObject(
     };
   }
   if (!isRecord(parsed)) {
-    return { ok: false, error: 'Expected a JSON object, like {"key": "value"}.' };
+    return {
+      ok: false,
+      error: 'Expected a JSON object, like {"key": "value"}.',
+    };
   }
   return { ok: true, value: parsed };
 }

@@ -41,7 +41,9 @@ def test_unknown_name_error_wording_per_subsystem():
 
 
 def test_explicit_registration_and_override_of_a_builtin():
-    reg = ProviderRegistry(group="dna.test", label="test provider", builtins={"a": "builtins:dict"})
+    reg = ProviderRegistry(
+        group="dna.test", label="test provider", builtins={"a": "builtins:dict"}
+    )
     assert reg.resolve("a") is dict
     reg.register("a", list)  # explicit callable wins over the built-in
     assert reg.resolve("a") is list

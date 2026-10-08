@@ -24,11 +24,16 @@ const serverWith = (labels: Record<string, string>) =>
 describe('useLabels', () => {
   it("uses the tracker's own words, so AYON users see 'List' not 'Playlist'", async () => {
     render(
-      <RuntimeConfigProvider env={{}} fetchOptions={{ fetchImpl: serverWith({ playlist: 'List' }) }}>
+      <RuntimeConfigProvider
+        env={{}}
+        fetchOptions={{ fetchImpl: serverWith({ playlist: 'List' }) }}
+      >
         <Probe />
       </RuntimeConfigProvider>
     );
-    await waitFor(() => expect(screen.getByTestId('playlist')).toHaveTextContent('List'));
+    await waitFor(() =>
+      expect(screen.getByTestId('playlist')).toHaveTextContent('List')
+    );
     expect(screen.getByTestId('shot')).toHaveTextContent('Shot'); // untouched labels keep the default
     expect(screen.getByTestId('unknown')).toHaveTextContent('Sequence'); // unknown kinds echo back
   });

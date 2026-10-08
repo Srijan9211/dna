@@ -87,7 +87,9 @@ class AyonAuthClient:
 
     # ── identity ──────────────────────────────────────────────────────────
 
-    def _find_user(self, *, name: Optional[str] = None, email: Optional[str] = None) -> Optional[dict]:
+    def _find_user(
+        self, *, name: Optional[str] = None, email: Optional[str] = None
+    ) -> Optional[dict]:
         if name is not None:
             query, variables = (
                 "query($v: [String!]) { users(names: $v) { edges { node { name active attrib { fullName email } } } } }",
@@ -98,7 +100,9 @@ class AyonAuthClient:
                 "query($v: [String!]) { users(emails: $v) { edges { node { name active attrib { fullName email } } } } }",
                 {"v": [email]},
             )
-        edges = self._service_graphql(query, variables).get("users", {}).get("edges", [])
+        edges = (
+            self._service_graphql(query, variables).get("users", {}).get("edges", [])
+        )
         return edges[0]["node"] if edges else None
 
     def resolve_login(self, identifier: str) -> str:
@@ -123,11 +127,15 @@ class AyonAuthClient:
         login = self.resolve_login(username)
         if not login or not password:
             raise ValueError("Invalid username or password.")
-        response = self._call("POST", "/api/auth/login", json={"name": login, "password": password})
+        response = self._call(
+            "POST", "/api/auth/login", json={"name": login, "password": password}
+        )
         if response.status_code in (400, 401, 403, 404):
             raise ValueError("Invalid username or password.")
         if response.status_code >= 400:
-            raise AyonUnavailable(f"AYON login failed with status {response.status_code}")
+            raise AyonUnavailable(
+                f"AYON login failed with status {response.status_code}"
+            )
         try:
             token = (response.json() or {}).get("token")
         except ValueError:
@@ -137,9 +145,13 @@ class AyonAuthClient:
             # redirect, password reset).  Treat it as a refusal, not a success.
             raise ValueError("AYON did not sign this account in with a password.")
         try:
-            self._call("POST", "/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+            self._call(
+                "POST", "/api/auth/logout", headers={"Authorization": f"Bearer {token}"}
+            )
         except AyonUnavailable:
-            logger.warning("Could not revoke AYON's verification session; it will expire on its own.")
+            logger.warning(
+                "Could not revoke AYON's verification session; it will expire on its own."
+            )
         return login
 
     def get_user_info(self, login: str) -> AyonUserInfo:
@@ -154,7 +166,9 @@ class AyonAuthClient:
                 "Your AYON account has no email address, which DNA needs to identify "
                 "you. Ask an administrator to add one."
             )
-        return AyonUserInfo(login=node["name"], email=email, name=attrib.get("fullName") or node["name"])
+        return AyonUserInfo(
+            login=node["name"], email=email, name=attrib.get("fullName") or node["name"]
+        )
 
     def confirm_user_active(self, login: str) -> None:
         """Raise ``ValueError`` if the account may no longer sign in."""

@@ -1,4 +1,12 @@
-import { Button, Callout, Flex, Heading, Spinner, Tabs, Text } from '@radix-ui/themes';
+import {
+  Button,
+  Callout,
+  Flex,
+  Heading,
+  Spinner,
+  Tabs,
+  Text,
+} from '@radix-ui/themes';
 import { ArrowLeft } from 'lucide-react';
 import { useConfigAccess, useEffectiveConfig } from '../../api';
 import { useRuntimeConfig } from '../../contexts';
@@ -52,8 +60,8 @@ export function ConfigAdminPage() {
       <Frame>
         <Callout.Root color="gray" role="status">
           <Callout.Text>
-            You do not have access to configuration. Ask an administrator, or return to
-            DNA.
+            You do not have access to configuration. Ask an administrator, or
+            return to DNA.
           </Callout.Text>
         </Callout.Root>
         <Flex>

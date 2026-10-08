@@ -27,7 +27,10 @@ function backend(opts: { provider: 'ayon' | 'shotgrid'; loginOk?: boolean }) {
 
   const impl = vi.fn((url: string, init?: RequestInit) => {
     const path = url.replace(/^https?:\/\/[^/]+/, '');
-    calls.push({ url: path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    calls.push({
+      url: path,
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
     if (path === '/config/public') {
       return respond(200, {
         auth: { provider: opts.provider },
@@ -37,7 +40,8 @@ function backend(opts: { provider: 'ayon' | 'shotgrid'; loginOk?: boolean }) {
         },
       });
     }
-    if (path === '/auth/refresh') return respond(401, { detail: 'No refresh token' });
+    if (path === '/auth/refresh')
+      return respond(401, { detail: 'No refresh token' });
     if (path === '/auth/login') {
       return opts.loginOk === false
         ? respond(401, { detail: 'Invalid username or password.' })
@@ -55,7 +59,11 @@ function Gate() {
   if (isSessionAuth(authProvider) && (isLoading || !isAuthenticated)) {
     return <TrackerLoginPage />;
   }
-  return <div>signed in as {user?.email} via {authProvider}</div>;
+  return (
+    <div>
+      signed in as {user?.email} via {authProvider}
+    </div>
+  );
 }
 
 function app(): ReactNode {
@@ -92,7 +100,10 @@ async function signIn(
   const username = await screen.findByLabelText(labels.username);
   await waitFor(() => expect(username).toBeEnabled());
   await user.type(username, credentials.username);
-  await user.type(screen.getByPlaceholderText(labels.password), credentials.password);
+  await user.type(
+    screen.getByPlaceholderText(labels.password),
+    credentials.password
+  );
   await user.click(screen.getByRole('button', { name: 'Sign in' }));
 }
 
@@ -111,7 +122,9 @@ describe('signing in with AYON', () => {
     vi.stubGlobal('fetch', impl);
     render(app());
 
-    expect(await screen.findByText('Sign in with your AYON credentials')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Sign in with your AYON credentials')
+    ).toBeInTheDocument();
     expect(screen.getByText('User name or email')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('AYON password')).toBeInTheDocument();
     expect(screen.queryByText(/Legacy/i)).toBeNull();
@@ -124,15 +137,23 @@ describe('signing in with AYON', () => {
     const user = userEvent.setup();
     render(app());
 
-    await signIn(user, { username: 'User name or email', password: 'AYON password' }, { username: 'bob', password: 'right' });
+    await signIn(
+      user,
+      { username: 'User name or email', password: 'AYON password' },
+      { username: 'bob', password: 'right' }
+    );
 
-    expect(await screen.findByText(/signed in as bob@x.com via ayon/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/signed in as bob@x.com via ayon/)
+    ).toBeInTheDocument();
     expect(calls.find((c) => c.url === '/auth/login')?.body).toEqual({
       username: 'bob',
       password: 'right',
     });
     // the AYON user's id is their (string) username, kept as is
-    expect(JSON.parse(sessionStorage.getItem('dna-sg-user') ?? '{}').id).toBe('bob');
+    expect(JSON.parse(sessionStorage.getItem('dna-sg-user') ?? '{}').id).toBe(
+      'bob'
+    );
   });
 
   it("shows AYON's refusal and stays on the form", async () => {
@@ -141,10 +162,18 @@ describe('signing in with AYON', () => {
     const user = userEvent.setup();
     render(app());
 
-    await signIn(user, { username: 'User name or email', password: 'AYON password' }, { username: 'bob', password: 'wrong' });
+    await signIn(
+      user,
+      { username: 'User name or email', password: 'AYON password' },
+      { username: 'bob', password: 'wrong' }
+    );
 
-    expect(await screen.findByText('Invalid username or password.')).toBeInTheDocument();
-    expect(screen.getByText('Sign in with your AYON credentials')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Invalid username or password.')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Sign in with your AYON credentials')
+    ).toBeInTheDocument();
   });
 
   it('never keeps the password anywhere in the browser', async () => {
@@ -152,7 +181,11 @@ describe('signing in with AYON', () => {
     vi.stubGlobal('fetch', impl);
     const user = userEvent.setup();
     render(app());
-    await signIn(user, { username: 'User name or email', password: 'AYON password' }, { username: 'bob', password: 'hunter2-secret' });
+    await signIn(
+      user,
+      { username: 'User name or email', password: 'AYON password' },
+      { username: 'bob', password: 'hunter2-secret' }
+    );
     await screen.findByText(/signed in as/);
 
     const stored = JSON.stringify({ ...sessionStorage, ...localStorage });
@@ -164,9 +197,13 @@ describe('ShotGrid sign-in is unchanged', () => {
   it('keeps its Legacy Password wording and PAT help', async () => {
     vi.stubGlobal('fetch', backend({ provider: 'shotgrid' }).impl);
     render(app());
-    expect(await screen.findByText('Sign in with your ShotGrid credentials')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Sign in with your ShotGrid credentials')
+    ).toBeInTheDocument();
     expect(screen.getByText('Email / Username')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('ShotGrid Legacy Password')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('ShotGrid Legacy Password')
+    ).toBeInTheDocument();
     expect(screen.getByText(/Cloud ShotGrid:/)).toBeInTheDocument();
   });
 
@@ -174,16 +211,28 @@ describe('ShotGrid sign-in is unchanged', () => {
     vi.stubGlobal('fetch', backend({ provider: 'shotgrid' }).impl);
     const user = userEvent.setup();
     render(app());
-    await signIn(user, { username: 'Email / Username', password: 'ShotGrid Legacy Password' }, { username: 'bob', password: 'pw' });
-    expect(await screen.findByText(/signed in as bob@x.com via shotgrid/)).toBeInTheDocument();
-    await waitFor(() => expect(JSON.parse(sessionStorage.getItem('dna-sg-user') ?? '{}').id).toBe(42));
+    await signIn(
+      user,
+      { username: 'Email / Username', password: 'ShotGrid Legacy Password' },
+      { username: 'bob', password: 'pw' }
+    );
+    expect(
+      await screen.findByText(/signed in as bob@x.com via shotgrid/)
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(JSON.parse(sessionStorage.getItem('dna-sg-user') ?? '{}').id).toBe(
+        42
+      )
+    );
   });
 });
 
 describe('loginCopy', () => {
   it('words each tracker separately', () => {
     expect(loginCopy('ayon', 'AYON').passwordPlaceholder).toBe('AYON password');
-    expect(loginCopy('shotgrid', 'ShotGrid').passwordPlaceholder).toBe('ShotGrid Legacy Password');
+    expect(loginCopy('shotgrid', 'ShotGrid').passwordPlaceholder).toBe(
+      'ShotGrid Legacy Password'
+    );
   });
 });
 

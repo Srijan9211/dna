@@ -30,7 +30,9 @@ def main(reference: str) -> None:
     spec.loader.exec_module(module)
     recorded = run_scenarios(module)
     out = HERE / "shotgrid_calls.json"
-    out.write_text(json.dumps(recorded, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    out.write_text(
+        json.dumps(recorded, indent=1, sort_keys=True) + "\n", encoding="utf-8"
+    )
     print(f"recorded {len(recorded)} scenarios -> {out}")
 
 

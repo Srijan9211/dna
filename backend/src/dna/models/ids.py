@@ -44,7 +44,9 @@ def normalize_id(value: Any) -> Union[int, str]:
         if not text:
             raise ValueError("an entity id cannot be empty")
         return int(text) if _DIGITS.fullmatch(text) else text
-    raise ValueError(f"an entity id must be an integer or a string, not {type(value).__name__}")
+    raise ValueError(
+        f"an entity id must be an integer or a string, not {type(value).__name__}"
+    )
 
 
 class EntityId:

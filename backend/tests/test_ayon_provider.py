@@ -33,15 +33,29 @@ from dna.prodtrack_providers.prodtrack_provider_base import (
 
 P = "demo"
 USERS = {
-    "ann": {"name": "ann", "active": True, "attrib": {"fullName": "Ann Artist", "email": "ann@x.com"}},
-    "bob": {"name": "bob", "active": True, "attrib": {"fullName": "Bob Sup", "email": "bob@x.com"}},
+    "ann": {
+        "name": "ann",
+        "active": True,
+        "attrib": {"fullName": "Ann Artist", "email": "ann@x.com"},
+    },
+    "bob": {
+        "name": "bob",
+        "active": True,
+        "attrib": {"fullName": "Bob Sup", "email": "bob@x.com"},
+    },
     "svc": {"name": "svc", "active": True, "attrib": {"fullName": None, "email": None}},
 }
 
 
 def _folder(fid, name, ftype, desc=None):
-    return {"id": fid, "name": name, "label": None, "folderType": ftype,
-            "path": f"/{name}", "attrib": {"description": desc}}
+    return {
+        "id": fid,
+        "name": name,
+        "label": None,
+        "folderType": ftype,
+        "path": f"/{name}",
+        "attrib": {"description": desc},
+    }
 
 
 def _comment(aid, body, author="ann", at="2026-10-06T10:00:00+00:00"):
@@ -50,11 +64,22 @@ def _comment(aid, body, author="ann", at="2026-10-06T10:00:00+00:00"):
 
 def _version(vid, folder, product, task, *, status="Pending review", comments=()):
     return {
-        "id": vid, "name": "v001", "version": 1, "status": status, "author": "ann",
-        "createdAt": "2026-10-06T09:00:00+00:00", "updatedAt": "2026-10-06T09:30:00+00:00",
-        "thumbnailId": "thumb-" + vid, "hasReviewables": True,
+        "id": vid,
+        "name": "v001",
+        "version": 1,
+        "status": status,
+        "author": "ann",
+        "createdAt": "2026-10-06T09:00:00+00:00",
+        "updatedAt": "2026-10-06T09:30:00+00:00",
+        "thumbnailId": "thumb-" + vid,
+        "hasReviewables": True,
         "attrib": {"description": f"desc of {vid}"},
-        "product": {"id": "p-" + vid, "name": product, "productType": "render", "folder": folder},
+        "product": {
+            "id": "p-" + vid,
+            "name": product,
+            "productType": "render",
+            "folder": folder,
+        },
         "task": task,
         "activities": {"edges": [{"node": c} for c in comments]},
     }
@@ -74,21 +99,48 @@ class ScriptedAyon:
     def _default_state() -> dict[str, Any]:
         sh = _folder("f1", "sh010", "Shot", "Opening")
         asset = _folder("f2", "hero", "Asset")
-        task = {"id": "t1", "name": "lighting", "taskType": "Lighting", "status": "In progress"}
+        task = {
+            "id": "t1",
+            "name": "lighting",
+            "taskType": "Lighting",
+            "status": "In progress",
+        }
         return {
-            "projects": {P: {"name": P, "label": "Demo", "active": True},
-                         "other": {"name": "other", "label": "Other", "active": True}},
+            "projects": {
+                P: {"name": P, "label": "Demo", "active": True},
+                "other": {"name": "other", "label": "Other", "active": True},
+            },
             "access": {"ann": [P], "bob": [P, "other"]},
             "versions": {
-                "v1": _version("v1", sh, "renderLighting", task, comments=[
-                    _comment("c2", "**Second**\n\nlater note", "bob", "2026-10-06T12:00:00+00:00"),
-                    _comment("c1", "first plain note", "ann", "2026-10-06T11:00:00+00:00"),
-                ]),
+                "v1": _version(
+                    "v1",
+                    sh,
+                    "renderLighting",
+                    task,
+                    comments=[
+                        _comment(
+                            "c2",
+                            "**Second**\n\nlater note",
+                            "bob",
+                            "2026-10-06T12:00:00+00:00",
+                        ),
+                        _comment(
+                            "c1", "first plain note", "ann", "2026-10-06T11:00:00+00:00"
+                        ),
+                    ],
+                ),
                 "v2": _version("v2", asset, "modelMain", None),
             },
-            "lists": {"L1": {"id": "L1", "label": "Dailies", "entityType": "version",
-                             "createdAt": "2026-10-01T00:00:00+00:00", "updatedAt": "2026-10-02T00:00:00+00:00",
-                             "items": [("v1", 1), ("v2", 0)]}},
+            "lists": {
+                "L1": {
+                    "id": "L1",
+                    "label": "Dailies",
+                    "entityType": "version",
+                    "createdAt": "2026-10-01T00:00:00+00:00",
+                    "updatedAt": "2026-10-02T00:00:00+00:00",
+                    "items": [("v1", 1), ("v2", 0)],
+                }
+            },
             "statuses": [
                 {"name": "Pending review", "scope": ["version", "task"]},
                 {"name": "Approved", "scope": ["version"]},
@@ -99,7 +151,9 @@ class ScriptedAyon:
         }
 
     def acting_as(self, login):
-        child = ScriptedAyon(as_user=login, log=self.log, state=self.state, url=self.url)
+        child = ScriptedAyon(
+            as_user=login, log=self.log, state=self.state, url=self.url
+        )
         child.queries = self.queries
         return child
 
@@ -116,7 +170,11 @@ class ScriptedAyon:
         if "users(names:" in query:
             return {"users": edges([USERS[n] for n in v["names"] if n in USERS])}
         if "users(emails:" in query:
-            return {"users": edges([u for u in USERS.values() if u["attrib"]["email"] in v["e"]])}
+            return {
+                "users": edges(
+                    [u for u in USERS.values() if u["attrib"]["email"] in v["e"]]
+                )
+            }
         if "users(first:" in query:
             return {"users": edges(list(USERS.values()))}
         if re.search(r"query \{ projects", query):
@@ -127,34 +185,98 @@ class ScriptedAyon:
             node = s["projects"].get(v["p"])
             return {"project": node}
         if "entityLists(first:" in query:
-            return {"project": {"entityLists": {**edges(
-                [{k: l[k] for k in ("id", "label", "entityType", "createdAt", "updatedAt")}
-                 for l in s["lists"].values()]), "pageInfo": {"hasNextPage": False}}}}
+            return {
+                "project": {
+                    "entityLists": {
+                        **edges(
+                            [
+                                {
+                                    k: l[k]
+                                    for k in (
+                                        "id",
+                                        "label",
+                                        "entityType",
+                                        "createdAt",
+                                        "updatedAt",
+                                    )
+                                }
+                                for l in s["lists"].values()
+                            ]
+                        ),
+                        "pageInfo": {"hasNextPage": False},
+                    }
+                }
+            }
         if "entityLists(ids:" in query:
             found = [s["lists"][i] for i in v["ids"] if i in s["lists"]]
-            return {"project": {"entityLists": edges([
-                {"id": l["id"], "items": {"edges": [{"entityId": e, "position": p} for e, p in l["items"]]}}
-                for l in found])}}
+            return {
+                "project": {
+                    "entityLists": edges(
+                        [
+                            {
+                                "id": l["id"],
+                                "items": {
+                                    "edges": [
+                                        {"entityId": e, "position": p}
+                                        for e, p in l["items"]
+                                    ]
+                                },
+                            }
+                            for l in found
+                        ]
+                    )
+                }
+            }
         if "versions(ids:" in query and "product" in query:
-            return {"project": {"versions": {**edges([s["versions"][i] for i in v["ids"] if i in s["versions"]]),
-                                              "pageInfo": {"hasNextPage": False}}}}
+            return {
+                "project": {
+                    "versions": {
+                        **edges(
+                            [s["versions"][i] for i in v["ids"] if i in s["versions"]]
+                        ),
+                        "pageInfo": {"hasNextPage": False},
+                    }
+                }
+            }
         if "versions(ids:" in query:  # the duplicate-comment check
             node = s["versions"].get(v["ids"][0], {})
-            return {"project": {"versions": edges([{"activities": node.get("activities", {"edges": []})}])}}
+            return {
+                "project": {
+                    "versions": edges(
+                        [{"activities": node.get("activities", {"edges": []})}]
+                    )
+                }
+            }
         if "versions(search:" in query:
             return {"project": {"versions": edges(list(s["versions"].values()))}}
         if "folders(search:" in query:
             folders = [x["product"]["folder"] for x in s["versions"].values()]
             return {"project": {"folders": edges(folders)}}
         if "folders(ids:" in query:
-            hit = [x["product"]["folder"] for x in s["versions"].values() if x["product"]["folder"]["id"] in v["ids"]]
+            hit = [
+                x["product"]["folder"]
+                for x in s["versions"].values()
+                if x["product"]["folder"]["id"] in v["ids"]
+            ]
             return {"project": {"folders": edges(hit)}}
         if "tasks(first:" in query:
             ver = s["versions"]["v1"]
-            return {"project": {"tasks": edges([{**ver["task"], "folder": ver["product"]["folder"]}])}}
+            return {
+                "project": {
+                    "tasks": edges(
+                        [{**ver["task"], "folder": ver["product"]["folder"]}]
+                    )
+                }
+            }
         if "tasks(ids:" in query:
             ver = s["versions"]["v1"]
-            return {"project": {"tasks": edges([{**ver["task"], "folder": ver["product"]["folder"]}])}}
+            return {
+                "project": {
+                    "tasks": edges(
+                        [{**ver["task"], "folder": ver["product"]["folder"]}]
+                    )
+                }
+            }
         raise AssertionError(f"unscripted query: {query}")
 
     def graphql_all(self, query, path, variables=None, **_):
@@ -167,9 +289,13 @@ class ScriptedAyon:
     # ── REST ──────────────────────────────────────────────────────────────
 
     def rest(self, method: str, path: str, **kwargs: Any) -> Any:
-        self.log.append({"op": "rest", "as": self.as_user, "method": method, "path": path, **kwargs})
+        self.log.append(
+            {"op": "rest", "as": self.as_user, "method": method, "path": path, **kwargs}
+        )
         s = self.state
-        if method == "GET" and (m := re.fullmatch(rf"/api/projects/{P}/versions/(\w+)/reviewables", path)):
+        if method == "GET" and (
+            m := re.fullmatch(rf"/api/projects/{P}/versions/(\w+)/reviewables", path)
+        ):
             return {"reviewables": s["reviewables"].get(m.group(1), [])}
         if method == "GET" and re.fullmatch(r"/api/projects/\w+", path):
             return {"statuses": s["statuses"]}
@@ -203,7 +329,10 @@ def test_ids_round_trip_and_reject_foreign_ids():
 
 
 def test_selection_builder_nests_dotted_paths():
-    assert build_selection(["id", "attrib.a", "attrib.b", "name"]) == "id attrib { a b } name"
+    assert (
+        build_selection(["id", "attrib.a", "attrib.b", "name"])
+        == "id attrib { a b } name"
+    )
 
 
 def test_adapter_defaults_match_the_shipped_profile():
@@ -218,7 +347,11 @@ def test_adapter_defaults_match_the_shipped_profile():
 def test_user_lookup_by_email():
     p, _ = provider()
     user = p.get_user_by_email("ann@x.com")
-    assert isinstance(user, User) and (user.id, user.name, user.login) == ("ann", "Ann Artist", "ann")
+    assert isinstance(user, User) and (user.id, user.name, user.login) == (
+        "ann",
+        "Ann Artist",
+        "ann",
+    )
     with pytest.raises(ValueError, match="User not found: no@x.com"):
         p.get_user_by_email("no@x.com")
 
@@ -245,17 +378,27 @@ def test_playlists_are_entity_lists_of_versions():
 def test_versions_follow_the_list_order_and_are_fully_converted():
     p, _ = provider()
     versions = p.get_versions_for_playlist(f"{P}:L1")
-    assert [v.id for v in versions] == [f"{P}:v2", f"{P}:v1"]  # by item position, not id
+    assert [v.id for v in versions] == [
+        f"{P}:v2",
+        f"{P}:v1",
+    ]  # by item position, not id
 
     v1 = versions[1]
     assert isinstance(v1, Version)
     assert v1.name == "sh010_renderLighting_v001"
     assert (v1.status, v1.description) == ("Pending review", "desc of v1")
     assert v1.user == {"type": "User", "id": "ann", "name": "Ann Artist"}
-    assert isinstance(v1.entity, Shot) and (v1.entity.id, v1.entity.name) == (f"{P}:f1", "sh010")
+    assert isinstance(v1.entity, Shot) and (v1.entity.id, v1.entity.name) == (
+        f"{P}:f1",
+        "sh010",
+    )
     assert v1.entity.description == "Opening"
     assert v1.task.name == "lighting" and v1.task.status == "In progress"
-    assert v1.task.pipeline_step == {"type": "TaskType", "id": "Lighting", "name": "Lighting"}
+    assert v1.task.pipeline_step == {
+        "type": "TaskType",
+        "id": "Lighting",
+        "name": "Lighting",
+    }
     assert v1.movie_path == f"http://ayon.test/api/projects/{P}/files/file-v1/payload"
     assert v1.thumbnail == f"http://ayon.test/api/projects/{P}/versions/v1/thumbnail"
     assert v1.created_at == "2026-10-06T09:00:00+00:00"
@@ -268,7 +411,10 @@ def test_versions_follow_the_list_order_and_are_fully_converted():
 def test_notes_are_oldest_first_with_subjects_and_authors():
     p, _ = provider()
     notes = p.get_versions_for_playlist(f"{P}:L1")[1].notes
-    assert [n.id for n in notes] == [f"{P}:c1", f"{P}:c2"]  # chronological, not as returned
+    assert [n.id for n in notes] == [
+        f"{P}:c1",
+        f"{P}:c2",
+    ]  # chronological, not as returned
     assert (notes[0].subject, notes[0].content) == (None, "first plain note")
     assert (notes[1].subject, notes[1].content) == ("Second", "later note")
     assert notes[1].author.login == "bob" and notes[1].author.email == "bob@x.com"
@@ -319,14 +465,19 @@ def test_get_entity_errors():
 
 def test_statuses_come_from_project_scope_and_union_across_projects():
     p, _ = provider()
-    expected = [{"code": "Pending review", "name": "Pending review"}, {"code": "Approved", "name": "Approved"}]
+    expected = [
+        {"code": "Pending review", "name": "Pending review"},
+        {"code": "Approved", "name": "Approved"},
+    ]
     assert p.get_version_statuses(P) == expected
     assert p.get_version_statuses() == expected  # same names across projects collapse
 
 
 def test_search():
     p, _ = provider()
-    assert p.search("ann", ["user"]) == [{"type": "User", "id": "ann", "name": "Ann Artist", "email": "ann@x.com"}]
+    assert p.search("ann", ["user"]) == [
+        {"type": "User", "id": "ann", "name": "Ann Artist", "email": "ann@x.com"}
+    ]
     shots = p.search("sh", ["shot"], P)
     assert shots[0]["type"] == "Shot" and shots[0]["id"] == f"{P}:f1"
     assert p.search("", ["version"], P)[0]["name"] == "sh010_renderLighting_v001"
@@ -341,7 +492,10 @@ def test_search_covers_every_type_the_ui_asks_for():
     got = p.search("", ["user", "shot", "asset", "version", "task"], P)
     assert {r["type"] for r in got} >= {"User", "Shot", "Version", "Task"}
     task = next(r for r in got if r["type"] == "Task")
-    assert task["id"].startswith(f"{P}:") and task["project"] == {"type": "Project", "id": P}
+    assert task["id"].startswith(f"{P}:") and task["project"] == {
+        "type": "Project",
+        "id": P,
+    }
     assert p.search("zzz-no-match", ["task"], P) == []
     assert all(r["type"] == "Playlist" for r in p.search("", ["playlist"], P))
 
@@ -359,10 +513,14 @@ def test_calls_act_as_the_signed_in_user():
     p, fake = provider(sudo_user="bob")
     fake.log.clear()
     p.get_playlists_for_project(P)
-    calls = [c for c in fake.log if c["op"] == "graphql" and "ids" not in c["vars"] or True]
+    calls = [
+        c for c in fake.log if c["op"] == "graphql" and "ids" not in c["vars"] or True
+    ]
     user_checks = [c for c in calls if "names" in c["vars"]]
     work = [c for c in calls if "names" not in c["vars"]]
-    assert [c["as"] for c in user_checks] == [None]  # the check itself uses the service identity
+    assert [c["as"] for c in user_checks] == [
+        None
+    ]  # the check itself uses the service identity
     assert work and all(c["as"] == "bob" for c in work)  # everything else acts as bob
 
 
@@ -391,7 +549,10 @@ def test_publish_note_posts_a_comment_with_subject_and_mentions():
     post = next(c for c in fake.log if c["op"] == "rest" and c["method"] == "POST")
     assert post["path"] == f"/api/projects/{P}/versions/v1/activities"
     assert post["json"]["activityType"] == "comment"
-    assert post["json"]["body"] == "**Review**\n\nLooks good\n\n[@bob](user:bob) [@ann](user:ann)"
+    assert (
+        post["json"]["body"]
+        == "**Review**\n\nLooks good\n\n[@bob](user:bob) [@ann](user:ann)"
+    )
     assert post["as"] == "ann"
 
 
@@ -404,17 +565,30 @@ def test_publish_note_is_idempotent_on_identical_body():
 
 def test_publish_note_as_its_author_and_with_status():
     p, fake = provider(sudo_user="ann")
-    p.publish_note(f"{P}:v1", "x", "y", [], [], [], author_email="bob@x.com", version_status="Approved")
+    p.publish_note(
+        f"{P}:v1",
+        "x",
+        "y",
+        [],
+        [],
+        [],
+        author_email="bob@x.com",
+        version_status="Approved",
+    )
     post = next(c for c in fake.log if c["op"] == "rest" and c["method"] == "POST")
     patch = next(c for c in fake.log if c["op"] == "rest" and c["method"] == "PATCH")
     assert post["as"] == "bob"  # attributed to the real author, not the requester
-    assert patch["path"] == f"/api/projects/{P}/versions/v1" and patch["json"] == {"status": "Approved"}
+    assert patch["path"] == f"/api/projects/{P}/versions/v1" and patch["json"] == {
+        "status": "Approved"
+    }
     assert patch["as"] == "ann"
 
 
 def test_publish_note_for_an_unknown_author():
     p, _ = provider()
-    with pytest.raises(UserNotFoundError, match="Author not found in AYON: ghost@x.com"):
+    with pytest.raises(
+        UserNotFoundError, match="Author not found in AYON: ghost@x.com"
+    ):
         p.publish_note(f"{P}:v1", "x", "y", [], [], [], author_email="ghost@x.com")
 
 
@@ -431,7 +605,10 @@ def test_attachment_uploads_then_appends_to_the_comment(tmp_path):
     assert p.attach_file_to_note(f"{P}:c1", str(f), "notes.txt") is True
     upload, patch = [c for c in fake.log if c["op"] == "rest"]
     assert upload["path"] == f"/api/projects/{P}/files" and upload["data"] == b"hi"
-    assert upload["headers"]["x-file-name"] == "notes.txt" and upload["headers"]["content-type"] == "text/plain"
+    assert (
+        upload["headers"]["x-file-name"] == "notes.txt"
+        and upload["headers"]["content-type"] == "text/plain"
+    )
     assert upload["headers"]["X-Activity-ID"] == "c1"
     assert patch["json"] == {"files": ["new1"], "appendFiles": True}
     assert p.attach_file_to_note("bad", str(f), "x") is False
@@ -442,12 +619,27 @@ def test_playlist_lifecycle():
     created = p.create_playlist(P, "New list")
     assert created.id == f"{P}:new1" and created.code == "New list"
     body = next(c for c in fake.log if c["op"] == "rest")["json"]
-    assert body == {"label": "New list", "entityType": "version", "entityListType": "generic", "items": []}
-    assert p.add_version_to_playlist(f"{P}:L1", f"{P}:v1") is True  # already in the list
-    assert not [c for c in fake.log if c["op"] == "rest" and c.get("path", "").endswith("/items")]
+    assert body == {
+        "label": "New list",
+        "entityType": "version",
+        "entityListType": "generic",
+        "items": [],
+    }
+    assert (
+        p.add_version_to_playlist(f"{P}:L1", f"{P}:v1") is True
+    )  # already in the list
+    assert not [
+        c
+        for c in fake.log
+        if c["op"] == "rest" and c.get("path", "").endswith("/items")
+    ]
     fake.state["versions"]["v3"] = fake.state["versions"]["v2"]
     p.add_version_to_playlist(f"{P}:L1", f"{P}:v3")
-    add = [c for c in fake.log if c["op"] == "rest" and c.get("path", "").endswith("/items")][0]
+    add = [
+        c
+        for c in fake.log
+        if c["op"] == "rest" and c.get("path", "").endswith("/items")
+    ][0]
     assert add["json"] == {"entityId": "v3"}
     with pytest.raises(ValueError, match="own project"):
         p.add_version_to_playlist(f"{P}:L1", "other:v1")
@@ -457,17 +649,30 @@ def test_transcript_is_a_comment_with_the_text_attached_and_is_replaceable():
     p, fake = provider()
     assert p.transcript_entity_type(P) == "activity"
     tid = p.publish_transcript(
-        project_id=P, playlist_id=f"{P}:L1", version_id=f"{P}:v1", meeting_id="m-1",
-        meeting_date=date(2026, 10, 6), platform="meet", body="hello world",
+        project_id=P,
+        playlist_id=f"{P}:L1",
+        version_id=f"{P}:v1",
+        meeting_id="m-1",
+        meeting_date=date(2026, 10, 6),
+        platform="meet",
+        body="hello world",
     )
     assert tid == f"{P}:new1"
     ops = [c for c in fake.log if c["op"] == "rest"]
     assert ops[0]["json"]["body"] == "Meeting transcript: meet m-1, 2026-10-06"
-    assert ops[1]["data"] == b"hello world" and ops[1]["headers"]["x-file-name"] == "transcript-2026-10-06.txt"
+    assert (
+        ops[1]["data"] == b"hello world"
+        and ops[1]["headers"]["x-file-name"] == "transcript-2026-10-06.txt"
+    )
     assert ops[2]["json"] == {"files": ["new2"], "appendFiles": True}
 
     fake.log.clear()
-    assert p.update_transcript(entity_type="activity", entity_id=tid, body="edited", meeting_date=date(2026, 10, 7))
+    assert p.update_transcript(
+        entity_type="activity",
+        entity_id=tid,
+        body="edited",
+        meeting_date=date(2026, 10, 7),
+    )
     replace = [c for c in fake.log if c["op"] == "rest"][-1]
     assert replace["json"]["appendFiles"] is False  # replaces the old attachment
 
@@ -500,7 +705,9 @@ def test_capabilities_and_registry():
 def test_every_query_the_provider_builds_is_well_formed():
     p, fake = provider(sudo_user="ann")
     versions = p.get_versions_for_playlist(f"{P}:L1")
-    p.get_entity("shot", f"{P}:f1"), p.get_entity("task", f"{P}:t1"), p.get_entity("playlist", f"{P}:L1")
+    p.get_entity("shot", f"{P}:f1"), p.get_entity("task", f"{P}:t1"), p.get_entity(
+        "playlist", f"{P}:L1"
+    )
     p.search("x", ["user", "shot", "version"], P)
     p.get_projects_for_user("ann@x.com")
     p.publish_note(versions[1].id, "c", "s", [], [], [])
@@ -563,14 +770,30 @@ def test_client_translates_graphql_errors():
 
 def test_client_pagination_follows_cursors():
     pages = [
-        {"data": {"c": {"pageInfo": {"hasNextPage": True, "endCursor": "A"}, "edges": [{"node": 1}, {"node": 2}]}}},
-        {"data": {"c": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "edges": [{"node": 3}]}}},
+        {
+            "data": {
+                "c": {
+                    "pageInfo": {"hasNextPage": True, "endCursor": "A"},
+                    "edges": [{"node": 1}, {"node": 2}],
+                }
+            }
+        },
+        {
+            "data": {
+                "c": {
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    "edges": [{"node": 3}],
+                }
+            }
+        },
     ]
     client, session = _client()
     session.request.return_value.content = b"x"
     session.request.return_value.json.side_effect = pages
     assert client.graphql_all("query", ("c",)) == [1, 2, 3]
-    sent = [c.kwargs["json"]["variables"]["after"] for c in session.request.call_args_list]
+    sent = [
+        c.kwargs["json"]["variables"]["after"] for c in session.request.call_args_list
+    ]
     assert sent == [None, "A"]
 
 

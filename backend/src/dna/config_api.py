@@ -59,7 +59,8 @@ class HandshakeRequest(BaseModel):
         "empty checks the configuration as it is now.",
     )
     smoke_email: Optional[str] = Field(
-        default=None, description="Also walk this user's projects, playlists and versions."
+        default=None,
+        description="Also walk this user's projects, playlists and versions.",
     )
     apply: bool = Field(
         default=False, description="Save the candidate if the report has no failures."
@@ -72,7 +73,25 @@ class ImportRequest(BaseModel):
 
 
 def _issues(exc: ConfigError) -> list[dict[str, str]]:
-    return [{"section": i.section, "path": i.path, "message": i.message, "source": i.source} for i in exc.issues]
+    return [
+        {"section": i.section, "path": i.path, "message": i.message, "source": i.source}
+        for i in exc.issues
+    ]
+
+
+def _admin_identity(auth: Any) -> str:
+    """Who to check against ``admin.admins``.
+
+    A user signed in through a tracker is identified by their tracker *login*: the
+    email DNA shows for them comes from a profile field that may be editable by the
+    user, so it must never be what grants administrative rights.  A user with no
+    tracker session (Google) is identified by the email Google verified.
+    """
+    session = getattr(auth, "session", None)
+    login = getattr(session, "tracker_login", None) if session is not None else None
+    if login:
+        return str(login).strip()
+    return (getattr(auth, "email", "") or "").strip()
 
 
 def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
@@ -93,9 +112,12 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
                 detail="Configuration can only be changed when authentication is enabled.",
             )
         allowed = {a.strip().lower() for a in admin_cfg.admins}
-        if (auth.email or "").strip().lower() not in allowed:
-            raise HTTPException(status_code=403, detail="You are not a configuration administrator.")
-        return auth.email
+        identity = _admin_identity(auth)
+        if not identity or identity.lower() not in allowed:
+            raise HTTPException(
+                status_code=403, detail="You are not a configuration administrator."
+            )
+        return identity
 
     Admin = Depends(admin)
 
@@ -103,7 +125,10 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
         return HTTPException(status_code=409, detail=str(exc))
 
     def _unprocessable(exc: ConfigError) -> HTTPException:
-        return HTTPException(status_code=422, detail={"message": "Invalid configuration", "issues": _issues(exc)})
+        return HTTPException(
+            status_code=422,
+            detail={"message": "Invalid configuration", "issues": _issues(exc)},
+        )
 
     # ── public ────────────────────────────────────────────────────────────
 
@@ -133,7 +158,9 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
             from dna.prodtrack_providers.profile import load_profile
 
             pt = cfg.get("prodtrack")
-            profile = load_profile(pt.connector, path=pt.profile_path, overrides=pt.profile)
+            profile = load_profile(
+                pt.connector, path=pt.profile_path, overrides=pt.profile
+            )
             body["prodtrack"] = {
                 "connector": pt.connector,
                 "display_name": profile.display_name,
@@ -186,23 +213,46 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
         try:
             result = configsys.preview_overrides(body.patch, replace=body.replace)
         except ConfigError as exc:
-            return {"valid": False, "issues": _issues(exc), "changed": [], "restart_required": []}
-        return {"valid": True, "issues": [], "changed": result.changed, "restart_required": result.restart_required}
+            return {
+                "valid": False,
+                "issues": _issues(exc),
+                "changed": [],
+                "restart_required": [],
+            }
+        return {
+            "valid": True,
+            "issues": [],
+            "changed": result.changed,
+            "restart_required": result.restart_required,
+        }
 
     @router.put("/{section}", summary="Change one config section")
-    def update_section(section: str, body: SectionUpdate, actor: str = Admin) -> dict[str, Any]:
+    def update_section(
+        section: str, body: SectionUpdate, actor: str = Admin
+    ) -> dict[str, Any]:
         if section not in configsys.default_registry:
-            raise HTTPException(status_code=404, detail=f"Unknown config section '{section}'")
+            raise HTTPException(
+                status_code=404, detail=f"Unknown config section '{section}'"
+            )
         try:
             result = configsys.apply_overrides(
-                {section: body.values}, actor=actor, note=body.note, expected_version=body.expected_version
+                {section: body.values},
+                actor=actor,
+                note=body.note,
+                expected_version=body.expected_version,
             )
         except ConfigError as exc:
             raise _unprocessable(exc)
         except StaleRevision as exc:
             raise _conflict(exc)
-        logger.info("Config section '%s' changed by %s: %s", section, actor, result.changed)
-        return {"revision": result.version, "changed": result.changed, "restart_required": result.restart_required}
+        logger.info(
+            "Config section '%s' changed by %s: %s", section, actor, result.changed
+        )
+        return {
+            "revision": result.version,
+            "changed": result.changed,
+            "restart_required": result.restart_required,
+        }
 
     # ── history ───────────────────────────────────────────────────────────
 
@@ -221,7 +271,11 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
         except StaleRevision as exc:
             raise _conflict(exc)
         logger.info("Config rolled back to revision %s by %s", version, actor)
-        return {"revision": result.version, "changed": result.changed, "restart_required": result.restart_required}
+        return {
+            "revision": result.version,
+            "changed": result.changed,
+            "restart_required": result.restart_required,
+        }
 
     @router.get("/export", summary="Export the runtime overrides")
     def export(_: str = Admin) -> dict[str, Any]:
@@ -237,11 +291,17 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
             raise HTTPException(status_code=400, detail=str(exc))
         except StaleRevision as exc:
             raise _conflict(exc)
-        return {"revision": result.version, "changed": result.changed, "restart_required": result.restart_required}
+        return {
+            "revision": result.version,
+            "changed": result.changed,
+            "restart_required": result.restart_required,
+        }
 
     # ── handshake ─────────────────────────────────────────────────────────
 
-    @router.post("/prodtrack/handshake", summary="Check a (candidate) tracker configuration")
+    @router.post(
+        "/prodtrack/handshake", summary="Check a (candidate) tracker configuration"
+    )
     def handshake(body: HandshakeRequest, actor: str = Admin) -> dict[str, Any]:
         """Connect, discover, validate and (optionally) smoke-test, then optionally save.
 
@@ -262,7 +322,10 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
             if not report.ok:
                 raise HTTPException(
                     status_code=409,
-                    detail={"message": "The handshake has failing checks; nothing was saved.", "report": out},
+                    detail={
+                        "message": "The handshake has failing checks; nothing was saved.",
+                        "report": out,
+                    },
                 )
             try:
                 result = configsys.apply_overrides(
@@ -272,7 +335,11 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
                 raise _unprocessable(exc)
             except StaleRevision as exc:
                 raise _conflict(exc)
-            out.update(applied=True, revision=result.version, restart_required=result.restart_required)
+            out.update(
+                applied=True,
+                revision=result.version,
+                restart_required=result.restart_required,
+            )
         return out
 
     return router

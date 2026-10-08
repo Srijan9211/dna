@@ -346,9 +346,7 @@ class ApiHandler {
   async getProjectGlossary(
     params: GetProjectGlossaryParams
   ): Promise<ProjectGlossary> {
-    return this.get<ProjectGlossary>(
-      `/projects/${params.projectId}/glossary`
-    );
+    return this.get<ProjectGlossary>(`/projects/${params.projectId}/glossary`);
   }
 
   async upsertProjectGlossary(
@@ -463,7 +461,9 @@ class ApiHandler {
     return body.results;
   }
 
-  async uploadAttachment(file: File): Promise<{ id: string; filename: string }> {
+  async uploadAttachment(
+    file: File
+  ): Promise<{ id: string; filename: string }> {
     const formData = new FormData();
     formData.append('file', file);
     const response = await this.axiosInstance.postForm<{

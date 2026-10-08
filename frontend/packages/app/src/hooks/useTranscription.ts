@@ -90,16 +90,12 @@ export function useTranscription({
     );
   };
 
-  const shouldFetchInitialStatus = !!(
-    meetingPlatform &&
-    meetingId &&
-    !session
-  );
+  const shouldFetchInitialStatus = !!(meetingPlatform && meetingId && !session);
 
-  const {
-    data: status,
-    isLoading: isLoadingStatus,
-  } = useQuery<BotStatus, Error>({
+  const { data: status, isLoading: isLoadingStatus } = useQuery<
+    BotStatus,
+    Error
+  >({
     queryKey: ['botStatus', meetingPlatform, meetingId],
     queryFn: () =>
       apiHandler.getBotStatus({
@@ -209,7 +205,11 @@ export function useTranscription({
         ['botStatus', payload.platform, payload.meeting_id],
         (old) =>
           old
-            ? { ...old, status: newStatus, updated_at: new Date().toISOString() }
+            ? {
+                ...old,
+                status: newStatus,
+                updated_at: new Date().toISOString(),
+              }
             : {
                 status: newStatus,
                 updated_at: new Date().toISOString(),
@@ -223,7 +223,14 @@ export function useTranscription({
     );
 
     return unsubscribe;
-  }, [eventClient, meetingPlatform, meetingId, playlistId, session, queryClient]);
+  }, [
+    eventClient,
+    meetingPlatform,
+    meetingId,
+    playlistId,
+    session,
+    queryClient,
+  ]);
 
   const dispatchMutation = useMutation<BotSession, Error, DispatchBotRequest>({
     mutationFn: (request) => apiHandler.dispatchBot({ request }),

@@ -15,7 +15,10 @@ import { UserAvatar } from './UserAvatar';
 import { SplitButton } from './SplitButton';
 import { AddVersionInput } from './AddVersionInput';
 import { ChangePlaylistInput } from './ChangePlaylistInput';
-import { ExpandableSearch, type ExpandableSearchHandle } from './ExpandableSearch';
+import {
+  ExpandableSearch,
+  type ExpandableSearchHandle,
+} from './ExpandableSearch';
 import { SquareButton } from './SquareButton';
 import { VersionCard, NoteStatus } from './VersionCard';
 import { TranscriptionMenu } from './TranscriptionMenu';
@@ -436,7 +439,9 @@ export function Sidebar({
               />
             </>
           )}
-          <Tooltip content={`${collapsed ? 'Expand' : 'Collapse'} Sidebar (${getLabel('toggleSidebar')})`}>
+          <Tooltip
+            content={`${collapsed ? 'Expand' : 'Collapse'} Sidebar (${getLabel('toggleSidebar')})`}
+          >
             <CollapseButton
               onClick={() => onCollapsedChange(!collapsed)}
               aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -449,7 +454,9 @@ export function Sidebar({
 
       {collapsed ? (
         <CollapsedToolbar>
-          {transcriptionEnabled && <TranscriptionMenu playlistId={playlistId} collapsed />}
+          {transcriptionEnabled && (
+            <TranscriptionMenu playlistId={playlistId} collapsed />
+          )}
         </CollapsedToolbar>
       ) : (
         <Toolbar>
@@ -523,7 +530,9 @@ export function Sidebar({
         </CollapsedFooter>
       ) : (
         <Footer $collapsed={collapsed}>
-          {transcriptionEnabled && <TranscriptionMenu playlistId={playlistId} />}
+          {transcriptionEnabled && (
+            <TranscriptionMenu playlistId={playlistId} />
+          )}
           <Tooltip content={`Settings (${getLabel('openSettings')})`}>
             <SettingsButton onClick={toggleSettings}>
               <Settings size={16} />
@@ -538,8 +547,6 @@ export function Sidebar({
           />
         </Footer>
       )}
-
-
 
       {playlistId && (
         <PublishDialog

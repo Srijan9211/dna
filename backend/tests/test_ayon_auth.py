@@ -29,9 +29,21 @@ from tests.test_auth_prod import _make_store
 
 SECRET = "k" * 40
 USERS = {
-    "bob": {"name": "bob", "active": True, "attrib": {"fullName": "Bob Sup", "email": "bob@x.com"}},
-    "noemail": {"name": "noemail", "active": True, "attrib": {"fullName": None, "email": None}},
-    "gone": {"name": "gone", "active": False, "attrib": {"fullName": "Gone", "email": "gone@x.com"}},
+    "bob": {
+        "name": "bob",
+        "active": True,
+        "attrib": {"fullName": "Bob Sup", "email": "bob@x.com"},
+    },
+    "noemail": {
+        "name": "noemail",
+        "active": True,
+        "attrib": {"fullName": None, "email": None},
+    },
+    "gone": {
+        "name": "gone",
+        "active": False,
+        "attrib": {"fullName": "Gone", "email": "gone@x.com"},
+    },
 }
 
 
@@ -54,7 +66,11 @@ class FakeHttp:
     """Answers AYON's login, logout and users GraphQL; records every call."""
 
     def __init__(self, passwords=None, users=None):
-        self.passwords = passwords or {"bob": "right", "noemail": "right", "gone": "right"}
+        self.passwords = passwords or {
+            "bob": "right",
+            "noemail": "right",
+            "gone": "right",
+        }
         self.users = USERS if users is None else users
         self.calls: list[dict] = []
         self.login_status = None  # force a status
@@ -83,8 +99,12 @@ class FakeHttp:
             if "users(names:" in kw["json"]["query"]:
                 nodes = [self.users[n] for n in variables if n in self.users]
             else:
-                nodes = [u for u in self.users.values() if u["attrib"]["email"] in variables]
-            response.json.return_value = {"data": {"users": {"edges": [{"node": n} for n in nodes]}}}
+                nodes = [
+                    u for u in self.users.values() if u["attrib"]["email"] in variables
+                ]
+            response.json.return_value = {
+                "data": {"users": {"edges": [{"node": n} for n in nodes]}}
+            }
         return response
 
 
@@ -113,8 +133,13 @@ def test_an_email_address_is_resolved_to_the_ayon_user_name():
         client(http).login_user("nobody@x.com", "right")
 
 
-@pytest.mark.parametrize("username, password", [("bob", "wrong"), ("bob", ""), ("", "right"), ("ghost", "right")])
-def test_bad_credentials_are_rejected_without_saying_which_part_was_wrong(username, password):
+@pytest.mark.parametrize(
+    "username, password",
+    [("bob", "wrong"), ("bob", ""), ("", "right"), ("ghost", "right")],
+)
+def test_bad_credentials_are_rejected_without_saying_which_part_was_wrong(
+    username, password
+):
     with pytest.raises(ValueError, match="Invalid username or password") as err:
         client().login_user(username, password)
     assert not isinstance(err.value, AuthBackendUnavailable)
@@ -204,7 +229,12 @@ def test_login_opens_a_session_that_holds_a_login_name_and_no_credential():
     assert (session.tracker_login, session.tracker_user_id) == ("bob", "bob")
 
     stored = json.dumps(store._sessions.docs, default=str)
-    for secret in ("right", "ayon-session-token", "service-key", result.refresh_cookie.split(".", 1)[-1]):
+    for secret in (
+        "right",
+        "ayon-session-token",
+        "service-key",
+        result.refresh_cookie.split(".", 1)[-1],
+    ):
         assert secret not in stored, f"{secret!r} must never be stored"
 
 
@@ -214,7 +244,17 @@ def test_the_access_token_carries_no_credential():
     import jwt
 
     payload = jwt.decode(token, options={"verify_signature": False})
-    assert set(payload) == {"jti", "sub", "session_id", "email", "name", "iat", "exp", "iss", "aud"}
+    assert set(payload) == {
+        "jti",
+        "sub",
+        "session_id",
+        "email",
+        "name",
+        "iat",
+        "exp",
+        "iss",
+        "aud",
+    }
 
 
 def test_a_failed_login_opens_no_session():
@@ -297,7 +337,10 @@ def test_selected_by_auth_provider_ayon(monkeypatch):
     from dna.auth_providers.auth_provider_base import get_auth_provider
 
     monkeypatch.setenv("AUTH_PROVIDER", "ayon")
-    with mock.patch("dna.auth_providers.shotgrid_sso._lazy_session_store", return_value=_make_store()):
+    with mock.patch(
+        "dna.auth_providers.shotgrid_sso._lazy_session_store",
+        return_value=_make_store(),
+    ):
         assert isinstance(get_auth_provider(), AyonLoginProvider)
 
 
@@ -319,7 +362,9 @@ def api(monkeypatch):
 
 def test_login_endpoint_sets_the_refresh_cookie_and_returns_a_token(api):
     client_, _, _ = api
-    response = client_.post("/auth/login", json={"username": "bob", "password": "right"})
+    response = client_.post(
+        "/auth/login", json={"username": "bob", "password": "right"}
+    )
     assert response.status_code == 200
     assert response.json()["user"]["id"] == "bob"
     cookie = response.headers["set-cookie"]
@@ -333,19 +378,35 @@ def test_login_info_endpoint_reports_the_mode(api):
 
 def test_wrong_password_is_401_and_an_outage_is_503_without_leaking_details(api):
     client_, _, http = api
-    assert client_.post("/auth/login", json={"username": "bob", "password": "no"}).status_code == 401
+    assert (
+        client_.post(
+            "/auth/login", json={"username": "bob", "password": "no"}
+        ).status_code
+        == 401
+    )
     http.login_status = 503
-    response = client_.post("/auth/login", json={"username": "bob", "password": "right"})
+    response = client_.post(
+        "/auth/login", json={"username": "bob", "password": "right"}
+    )
     assert response.status_code == 503
-    assert response.json()["detail"] == "AYON is unavailable right now. Please try again shortly."
+    assert (
+        response.json()["detail"]
+        == "AYON is unavailable right now. Please try again shortly."
+    )
     assert "ayon.test" not in response.text
 
 
 def test_me_endpoint_reports_the_tracker_identity(api):
     client_, _, _ = api
-    token = client_.post("/auth/login", json={"username": "bob", "password": "right"}).json()["access_token"]
+    token = client_.post(
+        "/auth/login", json={"username": "bob", "password": "right"}
+    ).json()["access_token"]
     me = client_.get("/auth/me", headers={"Authorization": f"Bearer {token}"}).json()
-    assert me == {"email": "bob@x.com", "name": "Bob Sup", "tracker_user_id": "bob"}  # no shotgrid_user_id
+    assert me == {
+        "email": "bob@x.com",
+        "name": "Bob Sup",
+        "tracker_user_id": "bob",
+    }  # no shotgrid_user_id
 
 
 def test_requests_are_scoped_to_the_signed_in_ayon_user(api):
@@ -366,7 +427,11 @@ def test_a_session_without_a_login_name_fails_closed(api):
 
     _, provider, _ = api
     blank = UserSession(
-        session_id="s", jti="j", email="bob@x.com", name="Bob", auth_provider="ayon_login",
+        session_id="s",
+        jti="j",
+        email="bob@x.com",
+        name="Bob",
+        auth_provider="ayon_login",
         ayon=AyonCredentials(username=""),
     )
     with mock.patch.object(main, "get_prodtrack_provider") as factory:
@@ -375,7 +440,10 @@ def test_a_session_without_a_login_name_fails_closed(api):
                 main.AuthContext(email="bob@x.com", session=blank), provider
             )
     assert err.value.status_code == 401
-    assert err.value.detail == "Session is missing the AYON login name. Please log in again."
+    assert (
+        err.value.detail
+        == "Session is missing the AYON login name. Please log in again."
+    )
     factory.assert_not_called()  # never degraded to the service account
 
 
@@ -386,4 +454,6 @@ def test_cors_credentials_are_enabled_for_ayon_login_too(monkeypatch):
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://dna.example")
     configsys.reset_config()
     kwargs = get_cors_middleware_kwargs()
-    assert kwargs["allow_credentials"] is True and kwargs["allow_origins"] == ["https://dna.example"]
+    assert kwargs["allow_credentials"] is True and kwargs["allow_origins"] == [
+        "https://dna.example"
+    ]

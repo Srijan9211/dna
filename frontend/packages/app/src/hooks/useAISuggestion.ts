@@ -102,7 +102,13 @@ export function useAISuggestion({
     ) {
       const model = userSettings?.preferred_model || undefined;
       managerInstance
-        .generateSuggestion(playlistId!, versionId!, userEmail!, undefined, model)
+        .generateSuggestion(
+          playlistId!,
+          versionId!,
+          userEmail!,
+          undefined,
+          model
+        )
         .catch(() => {
           // Error is captured in state
         });
@@ -119,7 +125,13 @@ export function useAISuggestion({
       }
 
       const model = userSettings?.preferred_model || undefined;
-      managerInstance.scheduleRegeneration(playlistId!, versionId!, userEmail!, undefined, model);
+      managerInstance.scheduleRegeneration(
+        playlistId!,
+        versionId!,
+        userEmail!,
+        undefined,
+        model
+      );
     },
     [playlistId, versionId, userEmail, userSettings, isEnabled]
   );

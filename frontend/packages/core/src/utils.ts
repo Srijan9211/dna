@@ -39,7 +39,9 @@ const NUMERIC_ID = /^\d{1,15}$/;
  * (ShotGrid ids), anything else is kept as the string it is (AYON ids such as
  * ``"demo:5fd4ea6a..."``).  Returns null for empty input.
  */
-export function parseEntityId(value: string | null | undefined): EntityId | null {
+export function parseEntityId(
+  value: string | null | undefined
+): EntityId | null {
   const text = (value ?? '').trim();
   if (!text) return null;
   if (NUMERIC_ID.test(text)) {
@@ -78,4 +80,3 @@ export function resolveMediaUrl(
   if (!url.startsWith('/media/')) return url;
   return `${apiBase.replace(/\/+$/, '')}${url}`;
 }
-

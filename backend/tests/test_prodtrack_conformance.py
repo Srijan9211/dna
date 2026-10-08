@@ -27,7 +27,6 @@ from dna.prodtrack_providers import shotgrid as sg_module  # noqa: E402
 from dna.prodtrack_providers.mock_provider import MockProdtrackProvider  # noqa: E402
 from dna.prodtrack_providers.profile import KINDS  # noqa: E402
 
-
 # Captured before the ``tracker`` fixture clears every config-registered variable,
 # so the other connectors are tested in isolation from the developer's environment.
 _AYON_URL, _AYON_KEY = os.environ.get("AYON_URL"), os.environ.get("AYON_API_KEY")
@@ -61,7 +60,8 @@ def _shotgrid_harness() -> Harness:
         sg_module,
         "Shotgun",
         side_effect=lambda *a, **k: FakeShotgun(
-            f"sudo:{k.get('sudo_as_login')}" if k.get("sudo_as_login") else "script", log
+            f"sudo:{k.get('sudo_as_login')}" if k.get("sudo_as_login") else "script",
+            log,
         ),
     )
     patcher.start()
@@ -221,7 +221,12 @@ def test_publish_note_is_idempotent_and_sets_status(tracker):
     first = p.publish_note(**kwargs)
     assert isinstance(first, int)
     existing = p.publish_note(
-        version_id=1001, content="Content", subject="Subj", to_users=[], cc_users=[], links=[]
+        version_id=1001,
+        content="Content",
+        subject="Subj",
+        to_users=[],
+        cc_users=[],
+        links=[],
     )
     assert existing == DATA["Note"][0]["id"]  # a duplicate returns the existing note
 
