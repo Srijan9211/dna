@@ -299,6 +299,42 @@ def _warn_if_media_links_are_unstable() -> None:
         )
 
 
+_event_bus_failed = False
+
+
+async def _start_event_bus(service) -> None:
+    """Share live events with the other backend instances, when configured.
+
+    Off by default (one instance needs no bus).  If it is configured but cannot start,
+    DNA still serves: this instance's own browsers get their events, and /health says
+    the bus is down so the problem is fixed rather than discovered by a missing update.
+    """
+    global _event_bus_failed
+    config = get_config()
+    if config.get("server").event_bus != "mongodb":
+        return
+    storage = config.get("storage")
+    try:
+        if storage.provider != "mongodb":
+            raise ValueError("server.event_bus=mongodb needs storage.provider=mongodb")
+        from dna.events.bus import MongoEventBus
+        from dna.events.lease import DEFAULT_COLLECTION, MeetingLeases
+
+        bus = MongoEventBus(storage.mongodb_url, storage.mongodb_db)
+        await get_event_publisher().attach_bus(bus)
+        service.enable_leases(
+            MeetingLeases(bus.database[DEFAULT_COLLECTION], bus.instance_id)
+        )
+        logger.info("Event bus on; this instance is %s", bus.instance_id)
+    except Exception as exc:
+        _event_bus_failed = True
+        logger.critical(
+            "The event bus could not start (%s). Browsers connected to other "
+            "instances will not receive this instance's live updates.",
+            exc,
+        )
+
+
 @contextlib.asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Start up and shut down application services."""
@@ -325,15 +361,20 @@ async def lifespan(_app: FastAPI):
 
     service = get_transcription_service()
     await service.init_providers()
+    # Before anything subscribes to a meeting: with the bus on, each meeting is
+    # handled by exactly one instance, and that has to be decided first.
+    await _start_event_bus(service)
     storage = service.storage_provider
     ensure_indexes = getattr(storage, "ensure_indexes", None)
     if callable(ensure_indexes):
         await ensure_indexes()
     await service.resubscribe_to_active_meetings()
+    await service.start_reconciling()
 
     yield
 
     await service.close()
+    await get_event_publisher().close()
 
 
 app = FastAPI(
@@ -726,6 +767,12 @@ def health(response: Response):
         if name in _startup_checks:
             checks[name] = _startup_checks[name]
 
+    bus = get_event_publisher().bus
+    if _event_bus_failed:
+        checks["events"] = False
+    elif bus is not None:
+        checks["events"] = bus.healthy
+
     # DNA may be running on a fallback: a bad config edit was refused, a stored
     # revision was unusable, or the shared store is unreachable.  Say so, so it is
     # fixed rather than discovered.
@@ -756,7 +803,7 @@ async def test_broadcast_transcript(payload: dict) -> dict:
     if not get_config().get("features").testing_enabled:
         raise HTTPException(status_code=404, detail="Not found")
     publisher = get_event_publisher()
-    await publisher.ws_manager.broadcast(payload)
+    await publisher.broadcast(payload)
     return {"broadcasted": True, "clients": publisher.ws_manager.connection_count}
 
 

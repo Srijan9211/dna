@@ -630,8 +630,8 @@ class TestOnTranscriptionUpdated:
         assert kwargs["data"].completed is True
         assert kwargs["data"].speaker == "Alice"
 
-        mock_event_publisher.ws_manager.broadcast.assert_called_once()
-        msg = mock_event_publisher.ws_manager.broadcast.call_args.args[0]
+        mock_event_publisher.broadcast.assert_called_once()
+        msg = mock_event_publisher.broadcast.call_args.args[0]
         assert msg["type"] == "transcript"
         assert msg["speaker"] == "Alice"
         assert msg["confirmed"] == [seg]
@@ -671,7 +671,7 @@ class TestOnTranscriptionUpdated:
             self._payload(confirmed=[self._seg()])
         )
         mock_storage_provider.upsert_segment.assert_not_called()
-        mock_event_publisher.ws_manager.broadcast.assert_not_called()
+        mock_event_publisher.broadcast.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_when_in_review_none(
@@ -684,7 +684,7 @@ class TestOnTranscriptionUpdated:
             self._payload(confirmed=[self._seg()])
         )
         mock_storage_provider.upsert_segment.assert_not_called()
-        mock_event_publisher.ws_manager.broadcast.assert_not_called()
+        mock_event_publisher.broadcast.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_when_paused(
@@ -697,7 +697,7 @@ class TestOnTranscriptionUpdated:
             self._payload(confirmed=[self._seg()])
         )
         mock_storage_provider.upsert_segment.assert_not_called()
-        mock_event_publisher.ws_manager.broadcast.assert_not_called()
+        mock_event_publisher.broadcast.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_skips_segment_before_resumed_at(
@@ -825,7 +825,7 @@ class TestOnTranscriptionUpdated:
         )
 
         assert "Failed to upsert segment" in caplog.text
-        mock_event_publisher.ws_manager.broadcast.assert_called_once()
+        mock_event_publisher.broadcast.assert_called_once()
 
 
 class TestTranscriptionServiceLifecycle:

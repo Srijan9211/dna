@@ -39,6 +39,7 @@ settings themselves see [CONFIGURATION.md](CONFIGURATION.md); for tracker setup 
 | `mongo` | the session store answers (only reported when authentication is on) |
 | `shotgrid` | the ShotGrid script account authenticated at startup |
 | `ayon` | the AYON service key authenticated at startup |
+| `events` | (only with `DNA_EVENT_BUS=mongodb`) the event bus is running and connected |
 | `config` | DNA is running on the configuration that was intended. `false` after a refused bad edit, an unreachable shared store, or an unusable stored revision (reasons on the admin page) |
 
 A tracker failure is checked once at startup and reported thereafter, so a probe never
@@ -97,6 +98,51 @@ At 30 the AYON server itself was the limit: it answers a single query in about 5
 but about 240 ms (median) with 30 callers at once. Reducing the number of tracker
 calls per request is where further gains are. Treat these as a baseline and re-measure
 on your own hardware.
+
+## Running more than one instance
+
+One instance is enough for a studio's review sessions (see Capacity). Run several for
+availability or headroom behind a load balancer, with these settings:
+
+1. **Turn the event bus on**: `DNA_EVENT_BUS=mongodb` (setting `server.event_bus`).
+   Browsers hold a WebSocket to one instance, and live updates (transcript lines, bot
+   status) are raised on whichever instance handled the meeting. With the bus on, every
+   instance passes them to the others, so every browser sees every event once and in
+   order. Without it, a browser sees only events raised on *its own* instance. It needs
+   `STORAGE_PROVIDER=mongodb` and uses the same MongoDB (a capped collection of about
+   8 MB; no replica set needed). Delivery takes about 50 ms.
+2. **Set a JWT secret** (`JWT_SECRET_KEY`), the same on every instance. Signed media links
+   are checked by whichever instance receives them.
+3. **Share configuration**: `DNA_CONFIG_PERSIST=true`, so admin changes reach every
+   instance within `admin.refresh_seconds`, and mount the same config files.
+4. **Let the load balancer carry WebSockets** (`/ws`) and use `/health` for readiness.
+   Sticky sessions are not needed.
+
+**Each meeting is handled by exactly one instance.** The instance that starts a meeting's
+transcription takes a *lease* on it (kept in MongoDB, renewed every 20 seconds, lasting
+60). The others leave it alone, so transcript lines are not stored or shown several times.
+If that instance stops, it hands its meetings back at once; if it dies, the lease expires
+within a minute and another instance adopts the meeting (and reconnects to the
+transcription service) on its next 20-second pass. The instances' clocks should be
+within a few seconds of each other (NTP).
+
+`/health` has an `events` entry when the bus is configured: `false` if it could not start
+or has lost MongoDB. A bus that is down does not stop the instance serving; its own
+browsers still get their events.
+
+To check a deployment with real processes:
+
+```bash
+python backend/scripts/multi_instance_check.py --instances 3
+```
+
+It starts three instances against a throwaway database, connects a browser to each,
+has each instance broadcast, and checks every browser saw every event once and in order
+(`--bus memory` shows what happens without the bus).
+
+Still per instance, not shared: the login throttle (the effective limit is multiplied by
+the number of instances; add a proxy rate limit for a hard one) and the short lookup
+caches (a cache miss costs one tracker call, so they only lower the hit rate).
 
 ## Known limits
 

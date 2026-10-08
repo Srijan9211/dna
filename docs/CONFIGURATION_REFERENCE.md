@@ -16,6 +16,7 @@ Every setting can be given in a YAML file, as the environment variable shown, or
 | `log_level` | `LOG_LEVEL` | `INFO` | restart | Python log level. |
 | `disable_docs` | `DISABLE_DOCS` | `false` | restart | Hide the OpenAPI docs endpoints. |
 | `attachment_store_dir` | `ATTACHMENT_STORE_DIR` | `/tmp/dna_attachments` | restart | Directory for uploaded note attachments. |
+| `event_bus` | `DNA_EVENT_BUS` | `memory` | restart | How live events (transcripts, bot status) reach browsers when more than one backend instance runs.  'memory': one instance only.  'mongodb': instances share events through the storage MongoDB, and each meeting is handled by exactly one of them. |
 | `cors_allowed_origins` | `CORS_ALLOWED_ORIGINS` | _empty_ | restart | Origins allowed by CORS (comma separated in the environment). |
 | `cloud_run_service` | `K_SERVICE` | _unset_ | restart | Set by Cloud Run. |
 | `cloud_run_revision` | `K_REVISION` | _unset_ | restart | Set by Cloud Run. |

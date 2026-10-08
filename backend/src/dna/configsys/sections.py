@@ -51,6 +51,15 @@ class ServerSection(Section):
         reload="restart",
         description="Directory for uploaded note attachments.",
     )
+    event_bus: Literal["memory", "mongodb"] = setting(
+        "memory",
+        env="DNA_EVENT_BUS",
+        reload="restart",
+        description="How live events (transcripts, bot status) reach browsers when "
+        "more than one backend instance runs.  'memory': one instance only.  "
+        "'mongodb': instances share events through the storage MongoDB, and each "
+        "meeting is handled by exactly one of them.",
+    )
     cors_allowed_origins: CsvList = setting(
         default_factory=list,
         env="CORS_ALLOWED_ORIGINS",

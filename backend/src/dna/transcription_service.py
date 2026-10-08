@@ -1,10 +1,12 @@
 """Transcription service for managing Vexa subscriptions and segment processing."""
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from dna.events import EventPublisher, EventType, get_event_publisher
+from dna.events.lease import MeetingLeases
 from dna.models.stored_segment import StoredSegmentCreate
 from dna.storage_providers.storage_provider_base import (
     StorageProviderBase,
@@ -34,6 +36,11 @@ class TranscriptionService:
         self.event_publisher = event_publisher
         self._subscribed_meetings: set[str] = set()
         self._meeting_to_playlist: dict[str, int] = {}
+        # With several backend instances, exactly one handles each meeting.  None
+        # means this is the only instance, which handles every meeting.
+        self._leases: MeetingLeases | None = None
+        self._reconcile_task: asyncio.Task | None = None
+        self.reconcile_seconds = 20.0
 
     async def init_providers(self) -> None:
         """Initialize providers if not already set."""
@@ -45,6 +52,72 @@ class TranscriptionService:
         if self.event_publisher is None:
             self.event_publisher = get_event_publisher()
         logger.info("Transcription service providers initialized")
+
+    # -- sharing meetings between instances ---------------------------------
+
+    def enable_leases(self, leases: MeetingLeases) -> None:
+        """Handle only the meetings this instance holds the lease on."""
+        self._leases = leases
+
+    async def _may_handle(self, meeting_key: str) -> bool:
+        """True if this instance should listen to the meeting (it holds the lease, or
+        there is only one instance).  A lease that cannot be checked is not assumed."""
+        if self._leases is None:
+            return True
+        try:
+            return await self._leases.acquire(meeting_key)
+        except Exception as exc:
+            logger.warning("Could not check the lease for %s: %s", meeting_key, exc)
+            return False
+
+    async def start_reconciling(self) -> None:
+        """Keep leases alive and adopt meetings whose owner has gone (no-op alone)."""
+        if self._leases is not None and self._reconcile_task is None:
+            self._reconcile_task = asyncio.create_task(
+                self._reconcile_loop(), name="meeting-reconcile"
+            )
+
+    async def _reconcile_loop(self) -> None:
+        while True:
+            try:
+                await self.reconcile()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Meeting reconciliation failed")
+            await asyncio.sleep(self.reconcile_seconds)
+
+    async def reconcile(self) -> None:
+        """One pass: renew what we own (dropping what we lost), then take any active
+        meeting nobody is handling.  Safe to run on every instance at once."""
+        if self._leases is None:
+            return
+        for meeting_key in list(self._subscribed_meetings):
+            try:
+                kept = await self._leases.renew(meeting_key)
+            except Exception as exc:
+                logger.warning("Could not renew lease for %s: %s", meeting_key, exc)
+                continue  # try again next pass; a lease outlives a few misses
+            if not kept:
+                logger.warning(
+                    "Lost the lease on %s to another instance; stopping here",
+                    meeting_key,
+                )
+                await self._drop_subscription(meeting_key)
+        await self.resubscribe_to_active_meetings()
+
+    async def _drop_subscription(self, meeting_key: str) -> None:
+        """Stop listening locally without ending the meeting (someone else has it)."""
+        self._subscribed_meetings.discard(meeting_key)
+        self._meeting_to_playlist.pop(meeting_key, None)
+        platform, _, native_id = meeting_key.partition(":")
+        if self.transcription_provider:
+            try:
+                await self.transcription_provider.unsubscribe_from_meeting(
+                    platform=platform, meeting_id=native_id
+                )
+            except Exception as exc:
+                logger.warning("Failed to unsubscribe from %s: %s", meeting_key, exc)
 
     async def resubscribe_to_active_meetings(self) -> None:
         """Resubscribe to any active meetings on startup for recovery."""
@@ -68,6 +141,9 @@ class TranscriptionService:
                 platform = bot.get("platform", "")
                 native_meeting_id = bot.get("native_meeting_id", "")
                 status = bot.get("status", "")
+                key = f"{platform}:{native_meeting_id}"
+                if key in self._subscribed_meetings:
+                    continue  # already ours
 
                 if not platform or not native_meeting_id:
                     logger.warning(
@@ -95,6 +171,11 @@ class TranscriptionService:
                         native_meeting_id,
                     )
                     continue
+
+                # Last, so a lease is only ever taken for a meeting we would handle: not
+                # a finished one, not one with no playlist.
+                if not await self._may_handle(key):
+                    continue  # another instance has it; its events arrive on the bus
 
                 meeting_key = f"{platform}:{native_meeting_id}"
                 self._meeting_to_playlist[meeting_key] = metadata.playlist_id
@@ -191,6 +272,14 @@ class TranscriptionService:
         meeting_key = f"{platform}:{meeting_id}"
         if meeting_key in self._subscribed_meetings:
             logger.info("Already subscribed to meeting: %s", meeting_key)
+            return
+
+        if not await self._may_handle(meeting_key):
+            logger.info(
+                "Meeting %s is handled by another instance; its events reach this "
+                "instance's browsers over the event bus",
+                meeting_key,
+            )
             return
 
         self._meeting_to_playlist[meeting_key] = playlist_id
@@ -303,7 +392,7 @@ class TranscriptionService:
 
         # Broadcast the raw Vexa shape with DNA envelope fields.
         # Frontend TranscriptManager.handleMessage() consumes this directly.
-        await self.event_publisher.ws_manager.broadcast(
+        await self.event_publisher.broadcast(
             {
                 "type": "transcript",
                 "speaker": speaker,
@@ -337,6 +426,14 @@ class TranscriptionService:
                     "Removed playlist mapping for completed meeting: %s", meeting_key
                 )
 
+            if self._leases is not None:
+                try:
+                    await self._leases.release(meeting_key)
+                except Exception as exc:
+                    logger.warning(
+                        "Could not release lease for %s: %s", meeting_key, exc
+                    )
+
             if self.transcription_provider:
                 try:
                     await self.transcription_provider.unsubscribe_from_meeting(
@@ -351,6 +448,21 @@ class TranscriptionService:
     async def close(self) -> None:
         """Clean up resources."""
         logger.info("Closing transcription service...")
+        if self._reconcile_task is not None:
+            self._reconcile_task.cancel()
+            try:
+                await self._reconcile_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._reconcile_task = None
+        if self._leases is not None:
+            # Hand our meetings back so another instance takes them at once rather
+            # than waiting for the leases to expire.
+            for meeting_key in list(self._subscribed_meetings):
+                try:
+                    await self._leases.release(meeting_key)
+                except Exception:
+                    pass
         if self.transcription_provider:
             await self.transcription_provider.close()
         self._subscribed_meetings.clear()

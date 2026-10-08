@@ -2,7 +2,7 @@
 
 Only events that are actually emitted AND consumed live here. The flat
 `transcript` frame doesn't go through this enum — it's broadcast directly
-via `EventPublisher.ws_manager.broadcast(...)` because its envelope is
+via `EventPublisher.broadcast(...)` because its envelope is
 shaped by the Vexa contract, not by the `{type, payload}` wrapper this
 enum drives.
 """

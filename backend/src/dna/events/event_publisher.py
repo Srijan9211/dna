@@ -3,10 +3,11 @@
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, Optional
 
 from fastapi import WebSocket
 
+from dna.events.bus import EventBus
 from dna.events.event_types import EventType
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,8 @@ class EventPublisher:
         self._subscribers: dict[EventType, list[EventCallback]] = {}
         self._global_subscribers: list[EventCallback] = []
         self._ws_manager = WebSocketManager()
+        # Other backend instances' browsers.  None: this is the only instance.
+        self._bus: Optional[EventBus] = None
 
     @property
     def ws_manager(self) -> WebSocketManager:
@@ -146,15 +149,39 @@ class EventPublisher:
             except Exception as e:
                 logger.exception("Error in event subscriber callback: %s", e)
 
-        await self._ws_manager.broadcast(
-            {
-                "type": event_type.value,
-                "payload": payload,
-            }
-        )
+        await self.broadcast({"type": event_type.value, "payload": payload})
+
+    async def broadcast(self, message: dict[str, Any]) -> None:
+        """Send a message to every connected browser, on every backend instance.
+
+        This instance's own browsers get it directly; other instances' get it through
+        the bus.  Everything meant for browsers goes through here so that none is
+        confined to the instance that happened to raise it.
+        """
+        await self._ws_manager.broadcast(message)
+        if self._bus is not None:
+            await self._bus.publish(message)
+
+    async def deliver_remote(self, message: dict[str, Any]) -> None:
+        """Hand a message another instance raised to this instance's browsers.  It is
+        not passed to local subscribers (that instance already ran them) and not sent
+        back to the bus (that would loop)."""
+        await self._ws_manager.broadcast(message)
+
+    async def attach_bus(self, bus: EventBus) -> None:
+        """Start sharing events with the other instances through ``bus``."""
+        await bus.start(self.deliver_remote)  # raises if the bus cannot start
+        self._bus = bus  # attached only once it is running
+
+    @property
+    def bus(self) -> Optional[EventBus]:
+        return self._bus
 
     async def close(self) -> None:
-        """Clear all subscribers."""
+        """Clear all subscribers and leave the bus."""
+        if self._bus is not None:
+            await self._bus.stop()
+            self._bus = None
         self._subscribers.clear()
         self._global_subscribers.clear()
         logger.info("Event publisher closed, all subscribers cleared")
