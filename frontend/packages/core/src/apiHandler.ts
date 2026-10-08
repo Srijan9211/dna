@@ -63,6 +63,7 @@ import {
   EntityId,
   ConfigAccess,
   ConfigChangeResult,
+  ProjectOverrides,
   ConfigRevision,
   ConfigValidation,
   EffectiveConfig,
@@ -526,6 +527,46 @@ class ApiHandler {
       apply: request.apply ?? false,
       note: request.note ?? '',
     });
+  }
+
+  // ── Per-project overrides ────────────────────────────────────────────── //
+
+  /** What a project may override, and the overrides now set. */
+  async getProjectOverrides(): Promise<ProjectOverrides> {
+    return this.get<ProjectOverrides>('/config/projects');
+  }
+
+  /** Set overrides for one project: `values` is `{section: {setting: value}}`. */
+  async setProjectOverrides(
+    projectId: string,
+    values: Record<string, unknown>,
+    options: { note?: string; expectedVersion?: number } = {}
+  ): Promise<ConfigChangeResult> {
+    return this.put<ConfigChangeResult>(
+      `/config/projects/${encodeURIComponent(projectId)}`,
+      {
+        values,
+        note: options.note ?? '',
+        expected_version: options.expectedVersion ?? null,
+      }
+    );
+  }
+
+  /** Remove one override (`section` + `path`), a section's, or all of a project's. */
+  async removeProjectOverride(
+    projectId: string,
+    options: { section?: string; path?: string; expectedVersion?: number } = {}
+  ): Promise<ConfigChangeResult> {
+    return this.delete<ConfigChangeResult>(
+      `/config/projects/${encodeURIComponent(projectId)}`,
+      {
+        params: {
+          section: options.section,
+          path: options.path,
+          expected_version: options.expectedVersion,
+        },
+      }
+    );
   }
 
   async getAttachmentBlobUrl(attachmentId: string): Promise<string> {

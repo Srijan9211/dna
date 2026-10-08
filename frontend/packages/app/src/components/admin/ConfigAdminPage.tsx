@@ -8,9 +8,14 @@ import {
   Text,
 } from '@radix-ui/themes';
 import { ArrowLeft } from 'lucide-react';
-import { useConfigAccess, useEffectiveConfig } from '../../api';
-import { useRuntimeConfig } from '../../contexts';
+import {
+  useConfigAccess,
+  useEffectiveConfig,
+  useGetProjectsForUser,
+} from '../../api';
+import { useAuth, useRuntimeConfig } from '../../contexts';
 import { HistoryPanel } from './HistoryPanel';
+import { ProjectOverridesPanel } from './ProjectOverridesPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { TrackerSetup } from './TrackerSetup';
 
@@ -46,6 +51,10 @@ export function ConfigAdminPage() {
   const access = useConfigAccess();
   const { data: effective } = useEffectiveConfig(access.data?.admin === true);
   const runtime = useRuntimeConfig();
+  const { user } = useAuth();
+  const { data: projects } = useGetProjectsForUser(
+    access.data?.admin === true ? (user?.email ?? null) : null
+  );
 
   if (access.isLoading) {
     return (
@@ -92,6 +101,7 @@ export function ConfigAdminPage() {
         <Tabs.List>
           <Tabs.Trigger value="tracker">Tracker setup</Tabs.Trigger>
           <Tabs.Trigger value="settings">Settings</Tabs.Trigger>
+          <Tabs.Trigger value="projects">Projects</Tabs.Trigger>
           <Tabs.Trigger value="history">History</Tabs.Trigger>
         </Tabs.List>
         <Flex pt="4" direction="column">
@@ -100,6 +110,14 @@ export function ConfigAdminPage() {
           </Tabs.Content>
           <Tabs.Content value="settings">
             <SettingsPanel />
+          </Tabs.Content>
+          <Tabs.Content value="projects">
+            <ProjectOverridesPanel
+              projects={(projects ?? []).map((p) => ({
+                id: String(p.id),
+                name: p.name ?? String(p.id),
+              }))}
+            />
           </Tabs.Content>
           <Tabs.Content value="history">
             <HistoryPanel />

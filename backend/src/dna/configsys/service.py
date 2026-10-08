@@ -328,6 +328,59 @@ class ConfigService:
         model_cls = self._registry.get(section).model
         return model_cls.model_validate(deep_merge(base.model_dump(), patch))
 
+    def project_overrides(self) -> list[dict[str, Any]]:
+        """Every per-project override now in force, with where it came from.
+
+        ``source`` is ``runtime`` for one set through the admin page, API or CLI, or
+        ``file:<path>`` for one in a config file (those can only be changed there).
+        """
+        out: list[dict[str, Any]] = []
+        for key, value in flatten(self.state.projects):
+            if len(key) < 3:
+                continue
+            dotted = ".".join([PROJECTS_KEY, *key])
+            out.append(
+                {
+                    "project": key[0],
+                    "section": key[1],
+                    "path": ".".join(key[2:]),
+                    "value": value,
+                    "source": self.state.provenance.get(dotted, "runtime"),
+                }
+            )
+        return sorted(out, key=lambda o: (o["project"], o["section"], o["path"]))
+
+    def project_settings(self) -> list[dict[str, Any]]:
+        """The settings a project may override, with the site-wide value each has."""
+        out: list[dict[str, Any]] = []
+        for spec in self._registry.sections():
+            model = self.state.models.get(spec.name)
+            if model is None:
+                continue
+            connector = getattr(model, "connector", None)
+            for path, info in iter_fields(spec.model):
+                m = meta(info)
+                if "project" not in (m.get("scope") or []):
+                    continue
+                if (
+                    spec.name == "prodtrack"
+                    and path[0] in _CONNECTOR_GROUPS
+                    and path[0] != connector
+                ):
+                    continue  # another tracker's setting: it cannot apply here
+                out.append(
+                    {
+                        "section": spec.name,
+                        "path": ".".join(path),
+                        "description": info.description or "",
+                        "type": _type_name(info.annotation),
+                        "site_value": _get(_dump(model, True), path),
+                        "restart": m.get("reload") == "restart",
+                        "secret": bool(m.get("secret")),
+                    }
+                )
+        return out
+
     def effective(self, *, mask_secrets: bool = True) -> dict[str, Any]:
         """Resolved configuration, secrets masked unless explicitly disabled."""
         return {
@@ -372,6 +425,23 @@ class ConfigService:
         issues: list[Issue] = []
         for path, value in flatten(patch):
             if path[0] == PROJECTS_KEY:
+                # projects.<id>.<section>.<setting>: a project override of a secret is
+                # held to the same rule (the settings that allow it are checked below).
+                if len(path) > 3 and path[2] in self._registry:
+                    info = lookup(self._registry.get(path[2]).model, path[3:])
+                    if (
+                        info is not None
+                        and meta(info).get("secret")
+                        and not is_ref(value)
+                    ):
+                        issues.append(
+                            Issue(
+                                path[2],
+                                ".".join(path),
+                                "secret values must be a reference like "
+                                "${env:NAME} or ${file:PATH}, not plaintext",
+                            )
+                        )
                 continue
             if path[0] not in self._registry:
                 continue  # reported as an unknown section by the build below
@@ -418,12 +488,35 @@ class ConfigService:
                     if meta(info).get("reload") == "restart":
                         restart.append(dotted)
 
+        old_projects = {k: v for k, v in flatten(self.state.projects)}
+        new_projects = {k: v for k, v in flatten(new_state.projects)}
+        for key in sorted(set(old_projects) | set(new_projects)):
+            if old_projects.get(key) == new_projects.get(key):
+                continue
+            changed.append(".".join([PROJECTS_KEY, *key]))
+            if len(key) > 2 and key[1] in self._registry:
+                info = lookup(self._registry.get(key[1]).model, key[2:])
+                if meta(info).get("reload") == "restart":
+                    restart.append(".".join([PROJECTS_KEY, *key]))
         if dry_run:
             return ChangeResult(self._version, sorted(changed), sorted(restart))
         self._runtime = new_runtime
         self._state = new_state
         self._version += 1
         return ChangeResult(self._version, sorted(changed), sorted(restart))
+
+
+# The per-tracker groups inside the prodtrack section (``prodtrack.shotgrid.*``).
+_CONNECTOR_GROUPS = frozenset({"shotgrid", "ayon", "mock"})
+
+
+def _type_name(annotation: Any) -> str:
+    """A UI-friendly name for a setting's type: boolean, integer, number or string."""
+    text = str(annotation)
+    for needle, name in (("bool", "boolean"), ("int", "integer"), ("float", "number")):
+        if needle in text:
+            return name
+    return "string"
 
 
 def _get(data: Mapping[str, Any], path: tuple[str, ...]) -> Any:

@@ -58,6 +58,20 @@ describe('ConfigAdminPage access', () => {
     expect(await screen.findByText(/revision 2/)).toBeInTheDocument();
   });
 
+  it('has a Projects tab for settings that differ per project', async () => {
+    vi.spyOn(apiHandler, 'getProjectOverrides').mockResolvedValue({
+      revision: 2,
+      settings: [],
+      overrides: [],
+    });
+    const user = userEvent.setup();
+    render(<ConfigAdminPage />);
+    await user.click(await screen.findByRole('tab', { name: /Projects/ }));
+    expect(
+      await screen.findByText('No project has its own settings yet.')
+    ).toBeInTheDocument();
+  });
+
   it('shows everyone else only a polite refusal, and never loads the settings', async () => {
     vi.mocked(apiHandler.getConfigAccess).mockResolvedValue({ admin: false });
     render(<ConfigAdminPage />);

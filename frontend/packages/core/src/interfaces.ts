@@ -712,3 +712,32 @@ export interface ConfigRevision {
   note: string;
   changed: string[];
 }
+
+/** A setting a single project may override, with the value that applies site-wide. */
+export interface ProjectSetting {
+  section: string;
+  /** Dotted path inside the section, e.g. `shotgrid.transcript_entity`. */
+  path: string;
+  description: string;
+  type: 'boolean' | 'integer' | 'number' | 'string';
+  site_value: unknown;
+  /** A change needs a backend restart to apply. */
+  restart: boolean;
+  secret: boolean;
+}
+
+/** One override currently in force for a project. */
+export interface ProjectOverride {
+  project: string;
+  section: string;
+  path: string;
+  value: unknown;
+  /** `runtime` (set here) or `file:<path>` (set in a config file; edit it there). */
+  source: string;
+}
+
+export interface ProjectOverrides {
+  revision: number;
+  settings: ProjectSetting[];
+  overrides: ProjectOverride[];
+}

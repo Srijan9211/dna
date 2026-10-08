@@ -13,6 +13,9 @@ unless ``admin.enabled`` is set:
     GET  /config/export                  the runtime overrides as a document
     POST /config/import                  replace the runtime overrides from one
     POST /config/prodtrack/handshake     check a (candidate) tracker configuration
+    GET  /config/projects                settings a project may override + current overrides
+    PUT  /config/projects/{project_id}   set overrides for one project
+    DELETE /config/projects/{project_id} remove one override (or all of a project's)
 
 Safety rules enforced here, not left to the UI:
 
@@ -27,6 +30,7 @@ Safety rules enforced here, not left to the UI:
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -68,6 +72,25 @@ class HandshakeRequest(BaseModel):
     note: str = ""
 
 
+class ProjectUpdate(BaseModel):
+    values: dict[str, Any] = Field(
+        description="Overrides by section, e.g. {'features': {'transcript_publish': true}}."
+    )
+    note: str = ""
+    expected_version: Optional[int] = None
+
+
+# A project id is whatever the tracker calls it: an integer, or a name such as an AYON
+# project.  Keep it to characters that cannot be mistaken for config syntax.
+_PROJECT_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+
+
+def _check_project_id(project_id: str) -> str:
+    if not _PROJECT_ID.match(project_id):
+        raise HTTPException(status_code=422, detail="Invalid project id")
+    return project_id
+
+
 class ImportRequest(BaseModel):
     document: dict[str, Any]
 
@@ -92,6 +115,27 @@ def _admin_identity(auth: Any) -> str:
     if login:
         return str(login).strip()
     return (getattr(auth, "email", "") or "").strip()
+
+
+def _remove(tree: dict[str, Any], keys: list[str]) -> bool:
+    """Delete the leaf at ``keys`` from a nested mapping, pruning mappings it empties.
+    False when nothing was there."""
+    if not keys:
+        return False
+    node: Any = tree
+    trail: list[tuple[dict[str, Any], str]] = []
+    for key in keys[:-1]:
+        if not isinstance(node, dict) or key not in node:
+            return False
+        trail.append((node, key))
+        node = node[key]
+    if not isinstance(node, dict) or keys[-1] not in node:
+        return False
+    del node[keys[-1]]
+    for parent, key in reversed(trail):
+        if parent[key] == {}:
+            del parent[key]
+    return True
 
 
 def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
@@ -133,13 +177,19 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
     # ── public ────────────────────────────────────────────────────────────
 
     @router.get("/public", summary="Non-secret settings the frontend reads at boot")
-    def public() -> dict[str, Any]:
+    def public(project_id: Optional[str] = None) -> dict[str, Any]:
+        """``project_id`` asks for the settings as they apply to that project."""
         cfg = configsys.get_config()
         auth = cfg.get("auth")
+        features = (
+            cfg.get_for_project("features", _check_project_id(project_id))
+            if project_id
+            else cfg.get("features")
+        )
         body: dict[str, Any] = {
             "config_version": cfg.version,
             "auth": {"provider": auth.provider},
-            "features": {"transcript_publish": cfg.get("features").transcript_publish},
+            "features": {"transcript_publish": features.transcript_publish},
         }
         frontend = cfg.get("frontend")
         body["frontend"] = {
@@ -248,6 +298,109 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
         logger.info(
             "Config section '%s' changed by %s: %s", section, actor, result.changed
         )
+        return {
+            "revision": result.version,
+            "changed": result.changed,
+            "restart_required": result.restart_required,
+        }
+
+    # ── per-project overrides ─────────────────────────────────────────────
+
+    @router.get(
+        "/projects",
+        summary="Settings a project may override, and the overrides now set",
+    )
+    def project_overrides(_: str = Admin) -> dict[str, Any]:
+        cfg = configsys.get_config()
+        return {
+            "revision": configsys.current_revision(),
+            "settings": cfg.project_settings(),
+            "overrides": cfg.project_overrides(),
+        }
+
+    @router.put("/projects/{project_id}", summary="Set overrides for one project")
+    def set_project_overrides(
+        project_id: str, body: ProjectUpdate, actor: str = Admin
+    ) -> dict[str, Any]:
+        _check_project_id(project_id)
+        try:
+            result = configsys.apply_overrides(
+                {"projects": {project_id: body.values}},
+                actor=actor,
+                note=body.note or f"project {project_id}",
+                expected_version=body.expected_version,
+            )
+        except ConfigError as exc:
+            raise _unprocessable(exc)
+        except StaleRevision as exc:
+            raise _conflict(exc)
+        logger.info(
+            "Project '%s' overrides changed by %s: %s",
+            project_id,
+            actor,
+            result.changed,
+        )
+        return {
+            "revision": result.version,
+            "changed": result.changed,
+            "restart_required": result.restart_required,
+        }
+
+    @router.delete("/projects/{project_id}", summary="Remove a project override")
+    def remove_project_override(
+        project_id: str,
+        section: Optional[str] = None,
+        path: Optional[str] = None,
+        expected_version: Optional[int] = None,
+        actor: str = Admin,
+    ) -> dict[str, Any]:
+        """Remove one override (``section`` and ``path``), all of a section's, or all of
+        the project's.  Only overrides set through the admin API can be removed here;
+        one that comes from a config file has to be removed from that file."""
+        _check_project_id(project_id)
+        if path and not section:
+            raise HTTPException(status_code=422, detail="'path' needs a 'section'")
+        cfg = configsys.get_config()
+        in_files = [
+            o
+            for o in cfg.project_overrides()
+            if o["project"] == project_id
+            and o["source"] != "runtime"
+            and (section is None or o["section"] == section)
+            and (path is None or o["path"] == path or o["path"].startswith(path + "."))
+        ]
+        runtime = cfg.runtime_overrides
+        node = runtime.get("projects", {}).get(project_id)
+        if node is None and not in_files:
+            raise HTTPException(status_code=404, detail="No such override")
+        if not _remove(
+            runtime,
+            [
+                "projects",
+                project_id,
+                *filter(None, [section]),
+                *(path.split(".") if path else []),
+            ],
+        ):
+            if in_files:
+                raise HTTPException(
+                    status_code=409,
+                    detail="That override is set in a configuration file; "
+                    "remove it there.",
+                )
+            raise HTTPException(status_code=404, detail="No such override")
+        try:
+            result = configsys.apply_overrides(
+                runtime,
+                actor=actor,
+                note=f"remove project {project_id} override",
+                replace=True,
+                expected_version=expected_version,
+            )
+        except ConfigError as exc:
+            raise _unprocessable(exc)
+        except StaleRevision as exc:
+            raise _conflict(exc)
         return {
             "revision": result.version,
             "changed": result.changed,

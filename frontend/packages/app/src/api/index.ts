@@ -8,6 +8,7 @@ import {
   type ConfigRevision,
   type EffectiveConfig,
   type EntityId,
+  type ProjectOverrides,
 } from '@dna/core';
 import { useQuery } from '@tanstack/react-query';
 
@@ -84,7 +85,16 @@ function useConfigHistory(enabled = true) {
   });
 }
 
+function useProjectOverrides(enabled = true) {
+  return useQuery<ProjectOverrides, Error>({
+    queryKey: ['config', 'projects'],
+    queryFn: () => apiHandler.getProjectOverrides(),
+    enabled,
+  });
+}
+
 export {
+  useProjectOverrides,
   useConfigAccess,
   useEffectiveConfig,
   useConfigHistory,

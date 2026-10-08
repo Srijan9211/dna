@@ -119,8 +119,18 @@ page tells you a restart is needed to apply it.
 
 ## Different settings for one project
 
-A few settings can be overridden per project (marked *project* in the reference), for
-example publishing transcripts for one show only:
+A few settings can be overridden per project (marked *project* in the
+[reference](CONFIGURATION_REFERENCE.md)), for example publishing transcripts for one show
+without turning it on everywhere. A project without an override uses the site-wide value.
+Only settings that apply to the tracker in use are offered.
+
+**On the admin page**, open the *Projects* tab. Enter the project's id as your tracker
+knows it (the field suggests your own projects), choose a setting, give the value, and
+save. The table below lists every override with the site-wide value beside it and
+where it was set; *Remove* returns that project to the site-wide value. Each change is
+recorded in *History* with your note and can be rolled back.
+
+**In a config file**, under `projects`:
 
 ```yaml
 features:
@@ -131,7 +141,20 @@ projects:
       transcript_publish: true
 ```
 
-A project override of any other setting is rejected when the configuration loads.
+An override set in a file is shown on the *Projects* tab but can only be changed in the
+file; an override set on the page takes effect over the file's.
+
+**Over the API** (administrators only):
+
+| Request | Does |
+|---|---|
+| `GET /config/projects` | the overridable settings (with site-wide values) and the overrides now set |
+| `PUT /config/projects/{project_id}` | set overrides: `{"values": {"features": {"transcript_publish": true}}, "note": "..."}` |
+| `DELETE /config/projects/{project_id}?section=features&path=transcript_publish` | remove one override; omit `path`/`section` to remove more |
+| `GET /config/public?project_id={project_id}` | the settings as they apply to that project |
+
+An override of any setting that is not marked *project*, of a locked section, or with
+the wrong type is rejected with the reason, and nothing is saved.
 
 ## Security and reliability notes
 

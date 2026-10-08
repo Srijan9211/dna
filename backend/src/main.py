@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Literal, Optional, cast
+from typing import Annotated, Any, Literal, Optional, cast
 
 from fastapi import (
     Depends,
@@ -1861,8 +1861,25 @@ async def publish_notes(
     )
 
 
-def _transcript_publish_enabled() -> bool:
-    return get_config().get("features").transcript_publish
+def _transcript_publish_enabled(project_id: Optional[Any] = None) -> bool:
+    """Whether transcripts may be published, for one project when it is known."""
+    config = get_config()
+    if project_id is None:
+        return config.get("features").transcript_publish
+    return config.get_for_project("features", str(project_id)).transcript_publish
+
+
+def _transcript_publish_possible() -> bool:
+    """True when it is on site-wide or for at least one project: the cheap early
+    check, made before the project is known."""
+    if _transcript_publish_enabled():
+        return True
+    return any(
+        o["section"] == "features"
+        and o["path"] == "transcript_publish"
+        and o["value"] is True
+        for o in get_config().project_overrides()
+    )
 
 
 @app.post(
@@ -1883,7 +1900,7 @@ async def publish_transcript(
     current_user: CurrentUserDep,
 ) -> PublishTranscriptResponse:
     """Publish one version's transcript; skip when body_hash has not changed."""
-    if not _transcript_publish_enabled():
+    if not _transcript_publish_possible():
         raise HTTPException(status_code=404, detail="Not Found")
 
     from dna.transcription_publish import build_transcript_payload
@@ -1945,6 +1962,9 @@ async def publish_transcript(
             status_code=404,
             detail="Version has no project associated",
         )
+    if not _transcript_publish_enabled(project_id):
+        # Enabled for some other project but not this one.
+        raise HTTPException(status_code=404, detail="Not Found")
 
     try:
         if existing:

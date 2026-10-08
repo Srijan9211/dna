@@ -55,6 +55,9 @@ ADMIN_ROUTES = [
     ("post", "/config/rollback/1"),
     ("post", "/config/import"),
     ("post", "/config/prodtrack/handshake"),
+    ("get", "/config/projects"),
+    ("put", "/config/projects/p1"),
+    ("delete", "/config/projects/p1"),
 ]
 
 
@@ -486,3 +489,198 @@ def test_a_tracker_user_cannot_become_admin_by_setting_their_email(api, monkeypa
 def test_google_users_are_still_matched_by_their_verified_email(api):
     as_user(ADMIN)
     assert api.get("/config/effective").status_code == 200
+
+
+# ── per-project overrides ────────────────────────────────────────────────────
+
+PUBLISH = {"values": {"features": {"transcript_publish": True}}}
+
+
+def test_the_projects_endpoint_lists_what_a_project_may_override(api):
+    body = api.get("/config/projects").json()
+    paths = {(x["section"], x["path"]) for x in body["settings"]}
+    assert ("features", "transcript_publish") in paths
+    assert ("prodtrack", "shotgrid.transcript_entity") in paths
+    # nothing a project must not touch
+    assert not any(
+        x["section"] in ("auth", "server", "storage") for x in body["settings"]
+    )
+    flag = next(x for x in body["settings"] if x["path"] == "transcript_publish")
+    assert flag["type"] == "boolean" and flag["site_value"] is False
+    assert body["overrides"] == []
+
+
+def test_setting_a_project_override_takes_effect_for_that_project_only(api):
+    response = api.put("/config/projects/proj_a", json=PUBLISH)
+    assert response.status_code == 200
+    assert response.json()["changed"] == ["projects.proj_a.features.transcript_publish"]
+
+    overrides = api.get("/config/projects").json()["overrides"]
+    assert overrides == [
+        {
+            "project": "proj_a",
+            "section": "features",
+            "path": "transcript_publish",
+            "value": True,
+            "source": "runtime",
+        }
+    ]
+    assert api.get("/config/public?project_id=proj_a").json()["features"] == {
+        "transcript_publish": True
+    }
+    assert api.get("/config/public?project_id=proj_b").json()["features"] == {
+        "transcript_publish": False
+    }
+    assert api.get("/config/public").json()["features"] == {"transcript_publish": False}
+
+
+def test_a_project_change_is_recorded_in_the_history(api):
+    api.put("/config/projects/proj_a", json={**PUBLISH, "note": "pilot show"})
+    latest = api.get("/config/history").json()[0]
+    assert latest["note"] == "pilot show"
+    assert latest["changed"] == ["projects.proj_a.features.transcript_publish"]
+    assert latest["actor"] == ADMIN
+
+
+def test_a_setting_that_is_not_project_scoped_is_refused(api):
+    response = api.put(
+        "/config/projects/proj_a",
+        json={"values": {"features": {"testing_enabled": True}}},
+    )
+    assert response.status_code == 422
+    assert "cannot be overridden per project" in response.text
+
+
+def test_locked_and_unknown_sections_and_settings_are_refused(api):
+    for values in (
+        {"auth": {"provider": "none"}},
+        {"nonsense": {"x": 1}},
+        {"features": {"no_such_setting": 1}},
+    ):
+        assert api.put("/config/projects/p", json={"values": values}).status_code == 422
+    assert api.get("/config/projects").json()["overrides"] == []  # nothing was saved
+
+
+def test_a_project_value_of_the_wrong_type_is_refused(api):
+    response = api.put(
+        "/config/projects/p",
+        json={"values": {"features": {"transcript_publish": "maybe"}}},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("bad", ["a b", "a/b", "x" * 200, "a;b", "$(x)"])
+def test_a_project_id_must_look_like_an_id(api, bad):
+    assert api.put(f"/config/projects/{bad}", json=PUBLISH).status_code in (404, 422)
+    assert api.get(f"/config/public?project_id={bad}").status_code == 422
+
+
+def test_removing_an_override_restores_the_site_value(api):
+    api.put("/config/projects/proj_a", json=PUBLISH)
+    removed = api.delete(
+        "/config/projects/proj_a?section=features&path=transcript_publish"
+    )
+    assert removed.status_code == 200
+    assert removed.json()["changed"] == ["projects.proj_a.features.transcript_publish"]
+    assert api.get("/config/projects").json()["overrides"] == []
+    assert api.get("/config/public?project_id=proj_a").json()["features"] == {
+        "transcript_publish": False
+    }
+    # and nothing is left behind in the stored overrides
+    assert "projects" not in api.get("/config/export").json()["overrides"]
+
+
+def test_removing_a_whole_project_removes_all_its_overrides(api):
+    api.put(
+        "/config/projects/proj_a",
+        json={
+            "values": {
+                "features": {"transcript_publish": True},
+                "prodtrack": {"shotgrid": {"transcript_entity": "CustomEntity05"}},
+            }
+        },
+    )
+    assert api.delete("/config/projects/proj_a").status_code == 200
+    assert api.get("/config/projects").json()["overrides"] == []
+
+
+def test_removing_something_that_is_not_there_is_404(api):
+    assert api.delete("/config/projects/nobody").status_code == 404
+    api.put("/config/projects/proj_a", json=PUBLISH)
+    assert (
+        api.delete(
+            "/config/projects/proj_a?section=features&path=testing_enabled"
+        ).status_code
+        == 404
+    )
+    assert (
+        api.delete("/config/projects/proj_a?path=transcript_publish").status_code == 422
+    )
+
+
+def test_an_override_in_a_config_file_cannot_be_removed_through_the_api(
+    api, tmp_path, monkeypatch
+):
+    (tmp_path / "site.yaml").write_text(
+        "projects:\n  proj_f:\n    features:\n      transcript_publish: true\n"
+    )
+    monkeypatch.setenv("DNA_CONFIG_DIR", str(tmp_path))
+    configsys.reset_config()
+    overrides = api.get("/config/projects").json()["overrides"]
+    assert len(overrides) == 1 and overrides[0]["source"].startswith("file")
+    response = api.delete("/config/projects/proj_f")
+    assert response.status_code == 409 and "configuration file" in response.text
+
+
+def test_a_stale_project_change_is_a_conflict(api):
+    api.put("/config/projects/p1", json=PUBLISH)
+    stale = api.put("/config/projects/p2", json={**PUBLISH, "expected_version": 0})
+    assert stale.status_code == 409
+
+
+def test_a_rollback_undoes_a_project_override(api):
+    api.put("/config/projects/proj_a", json=PUBLISH)  # revision 1
+    api.put(
+        "/config/features", json={"values": {"testing_enabled": False}}
+    )  # revision 2
+    api.post("/config/rollback/1")
+    assert api.get("/config/public?project_id=proj_a").json()["features"] == {
+        "transcript_publish": True
+    }
+
+
+# ── the settings that follow a project's override ────────────────────────────
+
+
+def test_transcript_publishing_follows_the_project_override(api):
+    import main
+
+    assert main._transcript_publish_possible() is False
+    api.put("/config/projects/proj_a", json=PUBLISH)
+    assert main._transcript_publish_possible() is True
+    assert main._transcript_publish_enabled("proj_a") is True
+    assert main._transcript_publish_enabled("proj_b") is False
+    assert main._transcript_publish_enabled() is False  # the site-wide value
+
+
+def test_a_project_can_switch_publishing_off_when_it_is_on_site_wide(api):
+    import main
+
+    api.put("/config/features", json={"values": {"transcript_publish": True}})
+    api.put(
+        "/config/projects/quiet",
+        json={"values": {"features": {"transcript_publish": False}}},
+    )
+    assert main._transcript_publish_enabled("quiet") is False
+    assert main._transcript_publish_enabled("loud") is True
+
+
+def test_only_settings_that_apply_to_the_active_tracker_are_offered(api, monkeypatch):
+    monkeypatch.setenv("PRODTRACK_PROVIDER", "ayon")
+    configsys.reset_config()
+    paths = {
+        (x["section"], x["path"])
+        for x in api.get("/config/projects").json()["settings"]
+    }
+    assert ("features", "transcript_publish") in paths
+    assert ("prodtrack", "shotgrid.transcript_entity") not in paths  # ShotGrid-only
