@@ -97,6 +97,33 @@ export function ConfigAdminPage() {
         </Button>
       </Flex>
 
+      {effective?.status && !effective.status.ok && (
+        <Callout.Root color="red" role="alert">
+          <Callout.Text>
+            DNA is not running on the configuration you intended:
+          </Callout.Text>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+            {effective.status.problems.map((problem) => (
+              <li key={problem}>
+                <Text size="2">{problem}</Text>
+              </li>
+            ))}
+          </ul>
+        </Callout.Root>
+      )}
+      {effective?.status && effective.status.warnings.length > 0 && (
+        <Callout.Root color="amber" role="status">
+          <Callout.Text>Worth a look:</Callout.Text>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+            {effective.status.warnings.map((warning) => (
+              <li key={warning}>
+                <Text size="1">{warning}</Text>
+              </li>
+            ))}
+          </ul>
+        </Callout.Root>
+      )}
+
       <Tabs.Root defaultValue="tracker">
         <Tabs.List>
           <Tabs.Trigger value="tracker">Tracker setup</Tabs.Trigger>

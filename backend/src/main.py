@@ -32,7 +32,7 @@ from dna.auth.email import emails_match
 from dna.auth.errors import AuthBackendUnavailable
 from dna.auth.session_store import UserSession
 from dna.auth_providers.auth_provider_base import AuthProviderBase, get_auth_provider
-from dna.configsys import get_config
+from dna.configsys import StoreUnavailable, get_config
 from dna.cors_settings import get_cors_middleware_kwargs
 from dna.events import EventType, get_event_publisher
 from dna.glossary_config import (
@@ -599,6 +599,19 @@ from dna.config_api import create_config_router  # noqa: E402
 app.include_router(create_config_router(get_auth_context))
 
 
+@app.exception_handler(StoreUnavailable)
+async def _config_store_unavailable(_request: Request, exc: StoreUnavailable):
+    """The shared configuration store could not be reached: say so, save nothing."""
+    logger.error("Configuration store unavailable: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "The shared configuration store is unavailable. "
+            "Nothing was saved; try again shortly."
+        },
+    )
+
+
 # -----------------------------------------------------------------------------
 # Production Tracking — per-request, user-scoped provider
 # Must be defined AFTER CurrentUserDep
@@ -712,6 +725,15 @@ def health(response: Response):
     for name in ("shotgrid", "ayon"):
         if name in _startup_checks:
             checks[name] = _startup_checks[name]
+
+    # DNA may be running on a fallback: a bad config edit was refused, a stored
+    # revision was unusable, or the shared store is unreachable.  Say so, so it is
+    # fixed rather than discovered.
+    from dna import configsys as _configsys
+
+    config_status = _configsys.config_status()
+    if not config_status["ok"] or config_status["persist"]:
+        checks["config"] = config_status["ok"]
 
     healthy = all(checks.values())
     if not healthy:

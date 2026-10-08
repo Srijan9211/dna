@@ -1437,13 +1437,20 @@ class TestAuthEndpoints:
 class TestRefreshCookieSettings:
 
     def _settings(self, **env):
+        from dna import configsys
         from dna.auth_providers.shotgrid_sso import refresh_cookie_settings
 
         with mock.patch.dict(os.environ, env, clear=False):
             for key in ("REFRESH_COOKIE_SAMESITE", "REFRESH_COOKIE_SECURE"):
                 if key not in env:
                     os.environ.pop(key, None)
-            return refresh_cookie_settings()
+            # A fresh start: an invalid environment is fatal at startup (once running,
+            # a bad change is refused instead, and the previous settings stay).
+            configsys.reset_config()
+            try:
+                return refresh_cookie_settings()
+            finally:
+                configsys.reset_config()
 
     def test_defaults_are_the_strictest_setting(self):
         assert self._settings() == {

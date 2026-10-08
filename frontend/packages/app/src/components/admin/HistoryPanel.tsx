@@ -12,6 +12,7 @@ import {
 } from '@radix-ui/themes';
 import { apiHandler, useConfigHistory } from '../../api';
 import { describeAdminError, type AdminError } from './adminErrors';
+import { showValue } from './projectOverrides';
 
 function when(seconds: number): string {
   return new Date(seconds * 1000).toLocaleString();
@@ -87,11 +88,19 @@ export function HistoryPanel() {
               <Table.Cell>
                 <Flex direction="column">
                   {rev.note && <Text size="2">{rev.note}</Text>}
-                  <Text size="1" color="gray">
-                    {rev.changed.length > 0
-                      ? rev.changed.join(', ')
-                      : 'no setting changed'}
-                  </Text>
+                  {rev.details && rev.details.length > 0 ? (
+                    rev.details.map((d) => (
+                      <Text key={d.path} size="1" color="gray">
+                        {`${d.path}: ${showValue(d.before)} → ${showValue(d.after)}`}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text size="1" color="gray">
+                      {rev.changed.length > 0
+                        ? rev.changed.join(', ')
+                        : 'no setting changed'}
+                    </Text>
+                  )}
                 </Flex>
               </Table.Cell>
               <Table.Cell>

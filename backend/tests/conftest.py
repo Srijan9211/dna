@@ -105,4 +105,5 @@ def _check_the_environment_on_every_config_read():
     from dna import configsys
 
     configsys.ENV_RECHECK_SECONDS = 0
+    configsys.BACKGROUND_REFRESH = False  # refresh inline so tests are deterministic
     yield

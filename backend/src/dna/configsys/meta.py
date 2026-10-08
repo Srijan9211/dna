@@ -34,6 +34,7 @@ def setting(
     *,
     env: Optional[str] = None,
     secret: bool = False,
+    endpoint: bool = False,
     reload: Reload = "hot",
     scope: tuple[str, ...] = ("site",),
     description: str = "",
@@ -47,6 +48,9 @@ def setting(
             deployments keep working because the alias is always honoured.
         secret: Masked in every API response; overrides must be references
             (``${env:NAME}`` / ``${file:PATH}``), never plaintext.
+        endpoint: A URL DNA sends credentials to.  A change made at runtime may only
+            point it at a host the operator already trusts, so an administrator cannot
+            aim a real API key at a server of their choosing.
         reload: ``"hot"`` applies without a restart; ``"restart"`` is flagged
             so an operator knows the change is not live yet.
         scope: Layers allowed to override the field beyond the site config.
@@ -57,6 +61,7 @@ def setting(
     extra = {
         "env": env,
         "secret": secret,
+        "endpoint": endpoint,
         "reload": reload,
         "scope": list(scope),
     }

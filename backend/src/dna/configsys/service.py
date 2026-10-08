@@ -19,6 +19,7 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ValidationError
 
@@ -66,6 +67,9 @@ class ChangeResult:
     version: int
     changed: list[str]
     restart_required: list[str]
+    # What each changed setting was and became ({"path", "before", "after"}); secrets
+    # appear masked.  The audit trail keeps it, so a reviewer sees the change itself.
+    details: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -75,6 +79,7 @@ class _State:
     merged: dict[str, Any]
     projects: dict[str, dict[str, Any]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    watched: list[str] = field(default_factory=list)
 
 
 class ConfigService:
@@ -105,6 +110,14 @@ class ConfigService:
         return self
 
     @property
+    def config_dir(self) -> Optional[Path]:
+        return self._config_dir
+
+    def watched_files(self) -> list[str]:
+        """Paths whose modification should trigger a reload."""
+        return list(self.state.watched)
+
+    @property
     def warnings(self) -> list[str]:
         """Things that are valid but unwise (for example a plain secret in a file)."""
         return list(self.state.warnings)
@@ -119,7 +132,9 @@ class ConfigService:
 
         issues: list[Issue] = []
         issues.extend(self._check_runtime_references(layers, runtime))
+        issues.extend(self._check_runtime_endpoints(layers, runtime))
         ref_errors: list[tuple[str, str]] = []
+        raw_merged = merged  # before secret references are resolved
         merged = resolve_refs(merged, self._environ, ref_errors)
         issues.extend(
             Issue(p.split(".")[0], p, msg, provenance.get(p, ""))
@@ -152,8 +167,111 @@ class ConfigService:
         if issues:
             raise ConfigError(issues)
         return _State(
-            models, provenance, merged, projects, self._plain_secret_warnings(layers)
+            models,
+            provenance,
+            merged,
+            projects,
+            self._plain_secret_warnings(layers) + self._shadow_warnings(layers),
+            self._watched_files(layers, raw_merged),
         )
+
+    def _trusted_hosts(self, layers: list[Layer]) -> set[str]:
+        """Hosts a runtime change may point an endpoint at: those the operator put in
+        the files or environment, each endpoint's built-in default, and
+        ``admin.allowed_hosts``."""
+        trusted: set[str] = set()
+        trusted_layers = [layer for layer in layers if layer.name != "runtime"]
+        for layer in trusted_layers:
+            for path, value in _walk_strings(layer.data):
+                if path[0] in self._registry:
+                    info = lookup(self._registry.get(path[0]).model, path[1:])
+                    if info is not None and meta(info).get("endpoint"):
+                        trusted.add(_host(value))
+        for spec in self._registry.sections():
+            for _, info in iter_fields(spec.model):
+                if meta(info).get("endpoint") and isinstance(info.default, str):
+                    trusted.add(_host(info.default))
+        lower, _ = merge_layers(trusted_layers)
+        extra = (lower.get("admin") or {}).get("allowed_hosts") or []
+        if isinstance(extra, str):
+            extra = extra.split(",")
+        trusted.update(h.strip().lower() for h in extra if str(h).strip())
+        trusted.discard("")
+        return trusted
+
+    def _check_runtime_endpoints(
+        self, layers: list[Layer], runtime: dict[str, Any]
+    ) -> list[Issue]:
+        """Keep an administrator from aiming credentials at a server of their choosing.
+
+        An endpoint (a tracker, LLM or transcription URL) is where DNA sends its API
+        key.  If a runtime change could set it to any host, pairing it with the real
+        key (a permitted reference) would hand that key to whoever runs the host.  So
+        at runtime an endpoint may only use a host already trusted (see
+        :meth:`_trusted_hosts`); anything else is the operator's decision, made in the
+        files, the environment or ``admin.allowed_hosts``.
+        """
+        if not runtime:
+            return []
+        trusted: Optional[set[str]] = None
+        issues: list[Issue] = []
+        for path, value in _walk_strings(runtime):
+            if path[0] == PROJECTS_KEY or path[0] not in self._registry:
+                continue
+            info = lookup(self._registry.get(path[0]).model, path[1:])
+            if info is None or not meta(info).get("endpoint") or not value.strip():
+                continue
+            if trusted is None:
+                trusted = self._trusted_hosts(layers)
+            host = _host(value)
+            if host and host not in trusted:
+                issues.append(
+                    Issue(
+                        path[0],
+                        ".".join(path),
+                        f"host '{host}' is not trusted for runtime changes; an "
+                        "operator must add it to the config files or "
+                        "admin.allowed_hosts (DNA_CONFIG_ALLOWED_HOSTS)",
+                        "runtime",
+                    )
+                )
+        return issues
+
+    def _shadow_warnings(self, layers: list[Layer]) -> list[str]:
+        """An override saved on the admin page outranks the files and environment, so
+        editing those has no effect.  Say so, rather than leaving it a mystery."""
+        runtime = next((lyr for lyr in layers if lyr.name == "runtime"), None)
+        if runtime is None:
+            return []
+        lower, provenance = merge_layers(
+            [lyr for lyr in layers if lyr.name != "runtime"]
+        )
+        out: list[str] = []
+        for path, value in flatten(runtime.data):
+            if path[0] == PROJECTS_KEY:
+                continue
+            before = _get(lower, path)
+            if before is None or _same(before, value):
+                continue
+            dotted = ".".join(path)
+            out.append(
+                f"{dotted} is set on the admin page and overrides "
+                f"{provenance.get(dotted, 'the configured value')}; changing that "
+                "source has no effect until the override is removed."
+            )
+        return out
+
+    def _watched_files(
+        self, layers: list[Layer], raw_merged: dict[str, Any]
+    ) -> list[str]:
+        """Files whose change should reload the configuration: the YAML files and any
+        file a secret reference reads (so a rotated mounted secret is noticed)."""
+        files = [lyr.detail for lyr in layers if lyr.name == "file" and lyr.detail]
+        for _, value in _walk_strings(raw_merged):
+            target = ref_target(value) if is_ref(value) else None
+            if target is not None and target[0] == "file":
+                files.append(target[1])
+        return sorted(set(files))
 
     def _plain_secret_warnings(self, layers: list[Layer]) -> list[str]:
         """A secret written into a config file sits in version control and backups.
@@ -477,8 +595,11 @@ class ConfigService:
 
         changed: list[str] = []
         restart: list[str] = []
+        details: list[dict[str, Any]] = []
+        before_shown = {n: _dump(m, True) for n, m in self.state.models.items()}
         for name, model in new_state.models.items():
             after = _dump(model, False)
+            after_shown = _dump(model, True)
             for path, value in flatten(after):
                 old = _get(before.get(name, {}), path)
                 if old != value:
@@ -487,6 +608,16 @@ class ConfigService:
                     info = lookup(self._registry.get(name).model, path)
                     if meta(info).get("reload") == "restart":
                         restart.append(dotted)
+                    if meta(info).get("secret"):
+                        # show the reference that was set, never the secret behind it
+                        was = _get(self._runtime, (name, *path))
+                        now = _get(new_runtime, (name, *path))
+                    else:
+                        was = _get(before_shown.get(name, {}), path)
+                        now = _get(after_shown, path)
+                    details.append(
+                        {"path": dotted, "before": _shown(was), "after": _shown(now)}
+                    )
 
         old_projects = {k: v for k, v in flatten(self.state.projects)}
         new_projects = {k: v for k, v in flatten(new_state.projects)}
@@ -494,20 +625,51 @@ class ConfigService:
             if old_projects.get(key) == new_projects.get(key):
                 continue
             changed.append(".".join([PROJECTS_KEY, *key]))
+            details.append(
+                {
+                    "path": ".".join([PROJECTS_KEY, *key]),
+                    "before": _shown(old_projects.get(key)),
+                    "after": _shown(new_projects.get(key)),
+                }
+            )
             if len(key) > 2 and key[1] in self._registry:
                 info = lookup(self._registry.get(key[1]).model, key[2:])
                 if meta(info).get("reload") == "restart":
                     restart.append(".".join([PROJECTS_KEY, *key]))
+        details.sort(key=lambda d: d["path"])
         if dry_run:
-            return ChangeResult(self._version, sorted(changed), sorted(restart))
+            return ChangeResult(
+                self._version, sorted(changed), sorted(restart), details
+            )
         self._runtime = new_runtime
         self._state = new_state
         self._version += 1
-        return ChangeResult(self._version, sorted(changed), sorted(restart))
+        return ChangeResult(self._version, sorted(changed), sorted(restart), details)
 
 
 # The per-tracker groups inside the prodtrack section (``prodtrack.shotgrid.*``).
 _CONNECTOR_GROUPS = frozenset({"shotgrid", "ayon", "mock"})
+
+
+def _host(value: str) -> str:
+    """The lower-cased host name of a URL, or '' when it has none."""
+    try:
+        return (urlsplit(str(value).strip()).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _same(a: Any, b: Any) -> bool:
+    """Loose equality across the string form the environment gives and the typed
+    value a runtime change carries (``"true"`` and ``True``)."""
+    return str(a).strip().lower() == str(b).strip().lower()
+
+
+def _shown(value: Any, limit: int = 200) -> Any:
+    """A value as it is kept in the audit trail: short, and never a secret."""
+    if isinstance(value, str) and len(value) > limit:
+        return value[:limit] + "…"
+    return value
 
 
 def _type_name(annotation: Any) -> str:

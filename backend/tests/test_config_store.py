@@ -27,9 +27,12 @@ class FakeMongoCollection:
     def __init__(self):
         self.docs = {}
 
-    def find(self, query, sort=None, limit=0):
+    def find(self, query, sort=None, limit=0, projection=None):
         docs = sorted(self.docs.values(), key=lambda d: d["version"], reverse=True)
-        return iter(docs[:limit] if limit else docs)
+        docs = docs[:limit] if limit else docs
+        if projection:  # {"field": 0} leaves the field out
+            docs = [{k: v for k, v in d.items() if projection.get(k, 1)} for d in docs]
+        return iter(docs)
 
     def find_one(self, query):
         return self.docs.get(query["_id"])
@@ -100,7 +103,14 @@ def test_revision_round_trips_through_a_document():
         "at": 12.5,
         "note": "note",
         "changed": ["a.b"],
+        "details": [],
     }
+
+
+def test_a_revision_written_before_versioning_still_loads():
+    old = {"_id": 1, "version": 1, "overrides": {"a": 1}, "actor": "x", "at": 1.0}
+    revision = Revision.from_doc(old)
+    assert revision.schema == 1 and revision.details == ()
 
 
 # ── applying, recording, rolling back ────────────────────────────────────────
@@ -257,7 +267,8 @@ def test_a_revision_that_no_longer_validates_does_not_take_the_service_down(
     monkeypatch.setattr(configsys, "_get_store", lambda service: shared)
     cfg = configsys.get_config()  # must not raise
     assert cfg.get("features").transcript_publish is False  # files + env only
-    assert "could not be applied" in caplog.text
+    assert "cannot be applied" in caplog.text
+    assert configsys.config_status()["ok"] is False
 
 
 def test_an_unreachable_store_keeps_the_current_config(monkeypatch, caplog):

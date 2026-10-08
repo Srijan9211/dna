@@ -58,6 +58,56 @@ describe('ConfigAdminPage access', () => {
     expect(await screen.findByText(/revision 2/)).toBeInTheDocument();
   });
 
+  it('says so, prominently, when DNA is running on a fallback configuration', async () => {
+    vi.mocked(apiHandler.getEffectiveConfig).mockResolvedValue(
+      effective({
+        status: {
+          ok: false,
+          problems: [
+            'revision 4 cannot be applied (bad value); running on the last valid revision, 3.',
+          ],
+          persist: true,
+          running_revision: 3,
+          latest_revision: 4,
+          warnings: [],
+        },
+      })
+    );
+    render(<ConfigAdminPage />);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      'not running on the configuration you intended'
+    );
+    expect(alert).toHaveTextContent('running on the last valid revision, 3');
+  });
+
+  it('shows warnings, such as an override that hides a file value', async () => {
+    vi.mocked(apiHandler.getEffectiveConfig).mockResolvedValue(
+      effective({
+        status: {
+          ok: true,
+          problems: [],
+          persist: true,
+          running_revision: 2,
+          latest_revision: 2,
+          warnings: [
+            'llm.provider is set on the admin page and overrides env:LLM_PROVIDER.',
+          ],
+        },
+      })
+    );
+    render(<ConfigAdminPage />);
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'overrides env:LLM_PROVIDER'
+    );
+  });
+
+  it('shows no banner when everything is as intended', async () => {
+    render(<ConfigAdminPage />);
+    await screen.findByRole('heading', { name: 'Configuration' });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('has a Projects tab for settings that differ per project', async () => {
     vi.spyOn(apiHandler, 'getProjectOverrides').mockResolvedValue({
       revision: 2,
@@ -222,6 +272,23 @@ describe('SettingsPanel', () => {
 });
 
 describe('HistoryPanel', () => {
+  it('shows what each setting was and became', async () => {
+    vi.mocked(apiHandler.getConfigHistory).mockResolvedValue([
+      {
+        version: 2,
+        actor: 'alice',
+        at: 1_700_000_000,
+        note: 'switch model',
+        changed: ['llm.provider'],
+        details: [{ path: 'llm.provider', before: 'openai', after: 'gemini' }],
+      },
+    ]);
+    render(<HistoryPanel />);
+    expect(
+      await screen.findByText('llm.provider: openai → gemini')
+    ).toBeInTheDocument();
+  });
+
   const revisions = [
     {
       version: 3,

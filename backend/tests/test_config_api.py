@@ -684,3 +684,94 @@ def test_only_settings_that_apply_to_the_active_tracker_are_offered(api, monkeyp
     }
     assert ("features", "transcript_publish") in paths
     assert ("prodtrack", "shotgrid.transcript_entity") not in paths  # ShotGrid-only
+
+
+# ── failure modes surfaced through the API ───────────────────────────────────
+
+
+def test_a_save_while_the_shared_store_is_down_is_a_clean_503(api, monkeypatch):
+    from dna.configsys import StoreUnavailable
+    from dna.configsys.store import MemoryOverrideStore
+
+    class Dead(MemoryOverrideStore):
+        def append(self, *a, **k):
+            raise StoreUnavailable("mongo is down")
+
+    monkeypatch.setattr(configsys, "_get_store", lambda service: Dead())
+    response = api.put(
+        "/config/features", json={"values": {"transcript_publish": True}}
+    )
+    assert response.status_code == 503
+    assert "Nothing was saved" in response.json()["detail"]
+    assert "mongo" not in response.text  # no driver details
+    assert api.get("/config/public").json()["features"] == {"transcript_publish": False}
+
+
+def test_the_effective_view_reports_whether_dna_runs_on_what_was_intended(api):
+    status = api.get("/config/effective").json()["status"]
+    assert status["ok"] is True and status["problems"] == []
+
+
+def test_the_effective_view_reports_a_fallback(api, monkeypatch):
+    from dna.configsys.store import MemoryOverrideStore
+
+    store = MemoryOverrideStore()
+    store.append({"features": {"transcript_publish": "banana"}}, actor="x")
+    monkeypatch.setenv("DNA_CONFIG_PERSIST", "true")
+    monkeypatch.setattr(configsys, "_get_store", lambda service: store)
+    configsys.reset_config()
+    status = api.get("/config/effective").json()["status"]
+    assert status["ok"] is False and "cannot be applied" in status["problems"][0]
+
+
+def test_health_goes_degraded_when_the_config_is_a_fallback(api, monkeypatch):
+    from dna.configsys.store import MemoryOverrideStore
+
+    store = MemoryOverrideStore()
+    store.append({"features": {"transcript_publish": "banana"}}, actor="x")
+    monkeypatch.setenv("DNA_CONFIG_PERSIST", "true")
+    monkeypatch.setattr(configsys, "_get_store", lambda service: store)
+    configsys.reset_config()
+    response = TestClient(main.app).get("/health")
+    assert response.status_code == 503 and response.json()["config"] is False
+
+
+def test_the_history_endpoint_shows_what_each_setting_was_and_became(api):
+    api.put(
+        "/config/features", json={"values": {"transcript_publish": True}, "note": "on"}
+    )
+    entry = api.get("/config/history").json()[0]
+    assert entry["details"] == [
+        {"path": "features.transcript_publish", "before": False, "after": True}
+    ]
+
+
+def test_a_handshake_leaves_a_record_of_who_ran_it_and_where(api, caplog, monkeypatch):
+    import logging
+
+    from dna.prodtrack_providers import handshake as handshake_module
+
+    class Report:
+        ok = True
+        connector = "ayon"
+
+        def to_dict(self):
+            return {"ok": True, "checks": []}
+
+    monkeypatch.setattr(handshake_module, "check_candidate", lambda *a, **k: Report())
+    with caplog.at_level(logging.INFO, logger="dna.config_api"):
+        api.post(
+            "/config/prodtrack/handshake",
+            json={
+                "candidate": {
+                    "prodtrack": {
+                        "connector": "ayon",
+                        "ayon": {"url": "https://ayon.studio.example"},
+                    }
+                }
+            },
+        )
+    assert (
+        f"Handshake by {ADMIN} against ayon.studio.example (ayon): passed"
+        in caplog.text
+    )

@@ -683,6 +683,7 @@ export interface EffectiveConfig {
   runtime_overrides: Record<string, unknown>;
   /** Sections set only from files/environment, never through the admin API. */
   locked_sections: string[];
+  status?: ConfigStatus;
 }
 
 export interface ConfigIssue {
@@ -705,12 +706,32 @@ export interface ConfigChangeResult {
   restart_required: string[];
 }
 
+/** What one setting was and became in a saved change (secrets appear as references). */
+export interface ConfigChangeDetail {
+  path: string;
+  before: unknown;
+  after: unknown;
+}
+
 export interface ConfigRevision {
   version: number;
   actor: string;
   at: number;
   note: string;
   changed: string[];
+  details?: ConfigChangeDetail[];
+}
+
+/** Whether DNA is running on the configuration that was intended. */
+export interface ConfigStatus {
+  ok: boolean;
+  /** Why not: a refused bad edit, an unreachable shared store, an unusable revision. */
+  problems: string[];
+  persist: boolean;
+  running_revision: number;
+  latest_revision: number;
+  /** Valid but unwise: a plain secret in a file, an override hiding a file value. */
+  warnings: string[];
 }
 
 /** A setting a single project may override, with the value that applies site-wide. */

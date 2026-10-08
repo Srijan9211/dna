@@ -39,6 +39,7 @@ settings themselves see [CONFIGURATION.md](CONFIGURATION.md); for tracker setup 
 | `mongo` | the session store answers (only reported when authentication is on) |
 | `shotgrid` | the ShotGrid script account authenticated at startup |
 | `ayon` | the AYON service key authenticated at startup |
+| `config` | DNA is running on the configuration that was intended. `false` after a refused bad edit, an unreachable shared store, or an unusable stored revision (reasons on the admin page) |
 
 A tracker failure is checked once at startup and reported thereafter, so a probe never
 loads the tracker. A `degraded` instance should be taken out of rotation until the
@@ -53,6 +54,10 @@ with secrets masked.
 | Risk | Control |
 |---|---|
 | Password guessing | per-address-and-user and per-user throttling, `429` with `Retry-After` (`auth.login_throttle`) |
+| An administrator redirecting an API key to their own server | runtime changes may only use hosts already trusted (config files, environment, `admin.allowed_hosts`) |
+| A bad config edit or a bad stored revision taking DNA down | a bad edit is refused and the previous config kept; an unusable revision falls back to the last valid one; both reported on `/health` |
+| The shared config store going down | refresh happens in the background with backoff, so requests never wait on it |
+| A profile name altering a tracker query | field and entity names must be plain dotted identifiers |
 | Someone reading server secrets through the admin page | references accepted only on secret settings, for sanctioned variables; no `${file:}` at runtime |
 | A tracker user making themselves an admin | admins matched by tracker login, not the editable profile email |
 | Copied media links | signed, expire after 15 minutes, bound to one version, one kind and one user |

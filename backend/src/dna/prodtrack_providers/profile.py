@@ -25,6 +25,7 @@ whose schema the transport adapter owns.
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -64,6 +65,21 @@ class Capabilities(Section):
     impersonation: Impersonation = "none"
 
 
+# Field and entity names are put into the tracker's queries (a GraphQL selection, a
+# ShotGrid field list), so they must be plain dotted identifiers: nothing a profile
+# override can contain may change the shape of a query.
+_PATH = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
+
+
+def _check_paths(kind: str, names: Any) -> None:
+    for name in names:
+        if not isinstance(name, str) or not _PATH.match(name):
+            raise ValueError(
+                f"{kind} '{name}' is not a plain field name "
+                "(letters, digits and underscores, joined by dots)"
+            )
+
+
 class EntityBinding(Section):
     """One DNA kind bound to a tracker entity."""
 
@@ -73,6 +89,16 @@ class EntityBinding(Section):
     # Fixed restriction on ``source`` (AYON: {"folderType": ["Shot"]}) so several
     # kinds can share one tracker entity.
     where: dict[str, Any] = {}
+
+    @model_validator(mode="after")
+    def _names_are_plain(self) -> "EntityBinding":
+        _check_paths("entity type", [self.source])
+        _check_paths("field", self.fields)
+        _check_paths("DNA field", self.fields.values())
+        _check_paths("link field", self.links)
+        _check_paths("DNA field", self.links.values())
+        _check_paths("filter field", self.where)
+        return self
 
 
 class Urls(Section):

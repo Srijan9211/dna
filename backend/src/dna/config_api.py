@@ -85,6 +85,22 @@ class ProjectUpdate(BaseModel):
 _PROJECT_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 
 
+def _target_host(candidate: dict[str, Any]) -> str:
+    """The host a handshake candidate points at, for the log (or the configured one)."""
+    from urllib.parse import urlsplit
+
+    prodtrack = (candidate or {}).get("prodtrack") or {}
+    connector = (
+        prodtrack.get("connector") or configsys.get_config().get("prodtrack").connector
+    )
+    url = (prodtrack.get(connector) or {}).get("url") or getattr(
+        getattr(configsys.get_config().get("prodtrack"), connector, None), "url", None
+    )
+    return (
+        (urlsplit(str(url)).hostname or "unknown") if url else "the configured tracker"
+    )
+
+
 def _check_project_id(project_id: str) -> str:
     if not _PROJECT_ID.match(project_id):
         raise HTTPException(status_code=422, detail="Invalid project id")
@@ -248,6 +264,9 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
             "config": cfg.effective(),  # secrets masked
             "provenance": cfg.provenance(),
             "runtime_overrides": cfg.runtime_overrides,
+            # Whether DNA is running on what was intended: false after a refused bad
+            # edit, an unreachable shared store, or an unusable stored revision.
+            "status": configsys.config_status(),
             # Sections that come from files/env only; the UI shows a lock, not an editor.
             "locked_sections": [
                 s.name
@@ -471,6 +490,16 @@ def create_config_router(auth_dependency: Callable[..., Any]) -> APIRouter:
             raise HTTPException(status_code=422, detail=str(exc))
         out = report.to_dict()
         out["applied"] = False
+        # A handshake makes outbound calls with real credentials; leave a record of
+        # who ran one, where, and what came of it, whether or not it is saved.
+        logger.info(
+            "Handshake by %s against %s (%s): %s%s",
+            actor,
+            _target_host(body.candidate),
+            report.connector,
+            "passed" if report.ok else "failed",
+            ", saving" if body.apply and report.ok else "",
+        )
         if body.apply:
             if not report.ok:
                 raise HTTPException(

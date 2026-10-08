@@ -426,7 +426,10 @@ def test_a_tracker_url_must_be_a_plain_http_url(tracker, url):
 
 
 def test_a_tracker_url_is_tidied():
-    svc = make({}, runtime={"prodtrack": {"ayon": {"url": " http://ayon.test:5000/ "}}})
+    svc = make(
+        {"DNA_CONFIG_ALLOWED_HOSTS": "ayon.test"},
+        runtime={"prodtrack": {"ayon": {"url": " http://ayon.test:5000/ "}}},
+    )
     assert svc.get("prodtrack").ayon.url == "http://ayon.test:5000"
 
 

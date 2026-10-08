@@ -118,4 +118,5 @@ Also read from the environment (per-profile aliases, mapped onto `profiles.<name
 | `admins` | `DNA_CONFIG_ADMINS` | _empty_ | restart | Who may change configuration (case-insensitive): tracker logins for users who sign in through a tracker (ShotGrid, AYON), emails for Google sign-in. |
 | `persist` | `DNA_CONFIG_PERSIST` | `false` | restart | Keep runtime changes in MongoDB (shared by every instance, with history and rollback).  Off: changes live in this process only. |
 | `allow_unauthenticated` | `DNA_CONFIG_ALLOW_UNAUTHENTICATED` | `false` | restart | Development only: let an unauthenticated caller administer config when AUTH_PROVIDER=none.  Refused when authentication is on. |
+| `allowed_hosts` | `DNA_CONFIG_ALLOWED_HOSTS` | _empty_ | restart | Host names an administrator may point a tracker, LLM or transcription URL at, beyond the hosts already in the config files and environment.  Without this a runtime change can only keep using the configured hosts, so API keys cannot be redirected. |
 | `refresh_seconds` | `DNA_CONFIG_REFRESH_SECONDS` | `5.0` |  | How often this instance checks the store for newer changes. |

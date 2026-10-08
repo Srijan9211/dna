@@ -73,6 +73,15 @@ server:
   operator already referenced in the config files;
 * `${file:...}` cannot be set at runtime. Put it in a config file.
 
+**Endpoints.** A URL that DNA sends credentials to (the ShotGrid and AYON addresses, an
+LLM profile's `url`, the Vexa `api_url`) can be changed at runtime only to a host the
+operator already trusts: one in the config files or environment, the built-in default,
+or one listed in `admin.allowed_hosts` (`DNA_CONFIG_ALLOWED_HOSTS`, comma separated;
+set it in the environment or a file, it cannot be changed at runtime). Without this,
+an administrator could point a real API key at a server of their choosing. To move DNA
+to a new tracker host, set it in the files or environment (or allow the host), then
+test it on the *Tracker setup* tab.
+
 ## Changing settings while DNA runs
 
 Turn the admin features on with environment variables (they are read at startup):
@@ -111,11 +120,43 @@ python -m dna.config_cli import overrides.yaml
 python -m dna.config_cli rollback 3
 ```
 
+**The audit trail.** Every revision records who, when, the note, and for each setting
+**what it was and what it became** (secrets appear only as the reference). *History*
+shows them. Each handshake is logged with who ran it and which host it targeted, saved
+or not.
+
 **What cannot be changed at runtime.** The `server`, `auth`, `storage` and `admin`
 sections are read at startup and are locked: they decide how the process starts and who
 is trusted, so changing them needs a file or environment change and a restart. Some
 other settings are flagged *restart* in the reference: a change is saved, and the admin
 page tells you a restart is needed to apply it.
+
+## When things change underneath a running DNA
+
+* **Files and mounted secrets are re-read.** Editing a YAML file in `DNA_CONFIG_DIR`,
+  adding one, or rotating a file a `${file:...}` reference reads, takes effect within
+  a few seconds. No restart is needed. A **bad edit is refused**: DNA keeps the
+  configuration it has and reports the problem (below), and the next good edit is
+  applied. An invalid configuration at *startup* is fatal and says exactly why.
+* **The shared store is read in the background.** With `admin.persist`, a background
+  thread (never a request) polls MongoDB every `admin.refresh_seconds` and adopts
+  newer revisions. If MongoDB is unreachable DNA keeps the configuration it has, backs
+  off (up to a minute between tries), and recovers by itself. A save while it is down
+  is refused with a `503` and changes nothing.
+* **A stored revision that stops validating** (after an upgrade renamed a setting, for
+  example) no longer discards the administrators' work. DNA uses the newest revision
+  that still validates and reports which one it is running. Saving a corrected
+  revision, or rolling back, clears the problem.
+* **Where it shows.** `GET /health` includes `config`; it is `false` (and the status
+  `degraded`) in any of these situations. The admin page shows a red banner with the
+  reasons, and the *effective* view carries a `status` block.
+* **Upgrading the settings themselves.** Each stored revision records the schema it was
+  written under. When a release renames or reshapes a setting it adds a migration
+  (`dna/configsys/migrations.py`), and old revisions are upgraded as they are read. A
+  revision written by a *newer* DNA than the one reading it is refused, not guessed at.
+* **An override can hide a file or environment value.** A setting saved on the admin
+  page outranks the files and environment, so editing those has no effect until the
+  override is removed. DNA warns about each such case (admin page banner, `validate`).
 
 ## Different settings for one project
 

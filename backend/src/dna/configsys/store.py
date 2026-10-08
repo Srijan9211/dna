@@ -1,22 +1,32 @@
 """Persistence for runtime config overrides: an append-only revision history.
 
 Every change an administrator makes is a new *revision* holding the complete set of
-overrides after the change, who made it, when, and which settings it touched.
-Because each revision is a full snapshot, rollback is simply "append a copy of an
-older revision", so history is never rewritten and every action stays auditable.
+overrides after the change, who made it, when, which settings it touched, and what
+each of them was and became.  Because each revision is a full snapshot, rollback is
+simply "append a copy of an older revision", so history is never rewritten and every
+action stays auditable.
 
 Overrides never contain a plaintext secret (the service refuses one), so revisions
 are safe to store and to show.  Several backend instances share one store; each
 polls it and reloads when a newer revision appears.
+
+Each revision records the ``schema`` it was written under.  When a later DNA renames
+or reshapes a setting, a migration (see :mod:`dna.configsys.migrations`) upgrades old
+revisions as they are read, instead of leaving them to fail validation.
 """
 
 from __future__ import annotations
 
 import copy
+import functools
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol, TypeVar
+
+# The shape of the overrides document this version of DNA writes.  Raise it, and add a
+# migration, whenever a setting is renamed or moved.
+CURRENT_SCHEMA = 1
 
 
 @dataclass(frozen=True)
@@ -27,6 +37,9 @@ class Revision:
     at: float
     note: str = ""
     changed: tuple[str, ...] = ()
+    schema: int = 1
+    # ({"path", "before", "after"}, ...): what each changed setting was and became.
+    details: tuple[dict[str, Any], ...] = ()
 
     def summary(self) -> dict[str, Any]:
         """A revision without its (possibly large) snapshot, for listings."""
@@ -36,6 +49,7 @@ class Revision:
             "at": self.at,
             "note": self.note,
             "changed": list(self.changed),
+            "details": [dict(d) for d in self.details],
         }
 
     def to_doc(self) -> dict[str, Any]:
@@ -47,6 +61,8 @@ class Revision:
             "at": self.at,
             "note": self.note,
             "changed": list(self.changed),
+            "schema": self.schema,
+            "details": [dict(d) for d in self.details],
         }
 
     @classmethod
@@ -58,7 +74,19 @@ class Revision:
             at=doc.get("at", 0.0),
             note=doc.get("note", ""),
             changed=tuple(doc.get("changed") or ()),
+            schema=doc.get(
+                "schema", 1
+            ),  # revisions from before versioning are schema 1
+            details=tuple(doc.get("details") or ()),
         )
+
+
+class StaleRevision(Exception):
+    """The store moved on since the caller read it; reload and retry."""
+
+
+class StoreUnavailable(Exception):
+    """The shared store could not be reached or did not answer in time."""
 
 
 class OverrideStore(Protocol):
@@ -67,7 +95,7 @@ class OverrideStore(Protocol):
     def get(self, version: int) -> Optional[Revision]: ...
 
     def history(self, limit: int = 50) -> list[Revision]:
-        """Newest first."""
+        """Newest first.  ``overrides`` may be left empty: listings do not need them."""
         ...
 
     def append(
@@ -77,15 +105,12 @@ class OverrideStore(Protocol):
         actor: str,
         note: str = "",
         changed: tuple[str, ...] = (),
+        details: tuple[dict[str, Any], ...] = (),
         expected_version: Optional[int] = None,
     ) -> Revision:
         """Add a revision.  With ``expected_version``, fail (``StaleRevision``) if
         someone else saved first, so two admins cannot silently overwrite each other."""
         ...
-
-
-class StaleRevision(Exception):
-    """The store moved on since the caller read it; reload and retry."""
 
 
 @dataclass
@@ -108,7 +133,14 @@ class MemoryOverrideStore:
             return list(reversed(self._revisions))[:limit]
 
     def append(
-        self, overrides, *, actor, note="", changed=(), expected_version=None
+        self,
+        overrides,
+        *,
+        actor,
+        note="",
+        changed=(),
+        details=(),
+        expected_version=None,
     ) -> Revision:
         with self._lock:
             current = self._revisions[-1].version if self._revisions else 0
@@ -123,9 +155,30 @@ class MemoryOverrideStore:
                 time.time(),
                 note,
                 tuple(changed),
+                CURRENT_SCHEMA,
+                tuple(dict(d) for d in details),
             )
             self._revisions.append(revision)
             return revision
+
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def _unavailable_on_error(method: _F) -> _F:
+    """Turn any driver failure into :class:`StoreUnavailable`, so callers handle one
+    error type and never see (or leak) driver internals."""
+
+    @functools.wraps(method)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return method(*args, **kwargs)
+        except (StaleRevision, StoreUnavailable):
+            raise
+        except Exception as exc:  # pymongo errors, socket errors, timeouts
+            raise StoreUnavailable(f"{type(exc).__name__}: {exc}") from exc
+
+    return wrapper  # type: ignore[return-value]
 
 
 class MongoOverrideStore:
@@ -141,31 +194,51 @@ class MongoOverrideStore:
         if collection is None:
             from pymongo import MongoClient
 
-            collection = MongoClient(url, serverSelectionTimeoutMS=5000)[db_name][
-                "config_revisions"
-            ]
+            # Bounded waits: the store is consulted from a background thread, but a
+            # save is made while an administrator waits, so nothing may hang.
+            collection = MongoClient(
+                url,
+                serverSelectionTimeoutMS=5000,
+                connectTimeoutMS=5000,
+                socketTimeoutMS=10000,
+            )[db_name]["config_revisions"]
         self._c = collection
 
     def _latest_doc(self) -> Optional[dict]:
         docs = list(self._c.find({}, sort=[("version", -1)], limit=1))
         return docs[0] if docs else None
 
+    @_unavailable_on_error
     def latest(self) -> Optional[Revision]:
         doc = self._latest_doc()
         return Revision.from_doc(doc) if doc else None
 
+    @_unavailable_on_error
     def get(self, version: int) -> Optional[Revision]:
         doc = self._c.find_one({"_id": version})
         return Revision.from_doc(doc) if doc else None
 
+    @_unavailable_on_error
     def history(self, limit: int = 50) -> list[Revision]:
+        # Listings show who/when/what, never the snapshot, which grows with every
+        # override: do not pull it across the network for each of the rows.
         return [
             Revision.from_doc(d)
-            for d in self._c.find({}, sort=[("version", -1)], limit=limit)
+            for d in self._c.find(
+                {}, sort=[("version", -1)], limit=limit, projection={"overrides": 0}
+            )
         ]
 
+    @_unavailable_on_error
     def append(
-        self, overrides, *, actor, note="", changed=(), expected_version=None
+        self,
+        overrides,
+        *,
+        actor,
+        note="",
+        changed=(),
+        details=(),
+        expected_version=None,
     ) -> Revision:
         from pymongo.errors import DuplicateKeyError
 
@@ -182,6 +255,8 @@ class MongoOverrideStore:
             time.time(),
             note,
             tuple(changed),
+            CURRENT_SCHEMA,
+            tuple(dict(d) for d in details),
         )
         try:
             self._c.insert_one(revision.to_doc())

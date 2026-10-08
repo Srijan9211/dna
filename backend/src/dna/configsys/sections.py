@@ -185,7 +185,7 @@ def _check_tracker_url(value: Optional[str]) -> Optional[str]:
 
 
 class ShotgridConnection(Section):
-    url: Optional[str] = setting(None, env="SHOTGRID_URL")
+    url: Optional[str] = setting(None, env="SHOTGRID_URL", endpoint=True)
     script_name: Optional[str] = setting(None, env="SHOTGRID_SCRIPT_NAME")
     api_key: Optional[str] = setting(None, env="SHOTGRID_API_KEY", secret=True)
     sudo_user: Optional[str] = setting(
@@ -216,7 +216,7 @@ class ShotgridConnection(Section):
 
 
 class AyonConnection(Section):
-    url: Optional[str] = setting(None, env="AYON_URL")
+    url: Optional[str] = setting(None, env="AYON_URL", endpoint=True)
     api_key: Optional[str] = setting(
         None, env="AYON_API_KEY", secret=True, description="Service-user API key."
     )
@@ -297,7 +297,7 @@ class LlmProfile(Section):
     api_key: Optional[str] = setting(None, secret=True)
     model: Optional[str] = None
     timeout: Optional[float] = setting(None, gt=0)
-    url: Optional[str] = None
+    url: Optional[str] = setting(None, endpoint=True)
 
 
 class LlmSection(Section):
@@ -364,7 +364,9 @@ def _llm_legacy_env(
 
 
 class VexaConfig(Section):
-    api_url: str = setting("https://api.cloud.vexa.ai", env="VEXA_API_URL")
+    api_url: str = setting(
+        "https://api.cloud.vexa.ai", env="VEXA_API_URL", endpoint=True
+    )
     api_key: str = setting("", env="VEXA_API_KEY", secret=True)
 
 
@@ -471,6 +473,15 @@ class AdminSection(Section):
         reload="restart",
         description="Development only: let an unauthenticated caller administer "
         "config when AUTH_PROVIDER=none.  Refused when authentication is on.",
+    )
+    allowed_hosts: CsvList = setting(
+        default_factory=list,
+        env="DNA_CONFIG_ALLOWED_HOSTS",
+        reload="restart",
+        description="Host names an administrator may point a tracker, LLM or "
+        "transcription URL at, beyond the hosts already in the config files and "
+        "environment.  Without this a runtime change can only keep using the "
+        "configured hosts, so API keys cannot be redirected.",
     )
     refresh_seconds: float = setting(
         5.0,
