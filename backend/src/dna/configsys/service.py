@@ -13,6 +13,7 @@ layer, so what an admin saves is validated exactly like what a file contains.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
@@ -33,6 +34,8 @@ from dna.configsys.layers import (
 from dna.configsys.meta import iter_fields, lookup, meta
 from dna.configsys.registry import Registry, default_registry
 from dna.configsys.secrets import is_ref, mask, ref_target, resolve_refs
+
+logger = logging.getLogger(__name__)
 
 CONFIG_DIR_ENV = "DNA_CONFIG_DIR"
 
@@ -71,6 +74,7 @@ class _State:
     provenance: dict[str, str]
     merged: dict[str, Any]
     projects: dict[str, dict[str, Any]] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
 
 
 class ConfigService:
@@ -96,7 +100,14 @@ class ConfigService:
     def load(self) -> "ConfigService":
         self._state = self._build(self._runtime)
         self._version += 1
+        for message in self._state.warnings:
+            logger.warning("Configuration: %s", message)
         return self
+
+    @property
+    def warnings(self) -> list[str]:
+        """Things that are valid but unwise (for example a plain secret in a file)."""
+        return list(self.state.warnings)
 
     def _build(self, runtime: dict[str, Any]) -> _State:
         layers: list[Layer] = []
@@ -140,7 +151,28 @@ class ConfigService:
 
         if issues:
             raise ConfigError(issues)
-        return _State(models, provenance, merged, projects)
+        return _State(
+            models, provenance, merged, projects, self._plain_secret_warnings(layers)
+        )
+
+    def _plain_secret_warnings(self, layers: list[Layer]) -> list[str]:
+        """A secret written into a config file sits in version control and backups.
+        It is allowed (an operator may have no alternative) but worth saying out loud.
+        """
+        out: list[str] = []
+        for layer in layers:
+            if layer.name != "file":
+                continue
+            for path, value in _walk_strings(layer.data):
+                if not value or is_ref(value) or path[0] not in self._registry:
+                    continue
+                info = lookup(self._registry.get(path[0]).model, path[1:])
+                if info is not None and meta(info).get("secret"):
+                    out.append(
+                        f"{layer.detail}: {'.'.join(path)} holds a plain secret; "
+                        "use ${env:NAME} or ${file:PATH} instead."
+                    )
+        return out
 
     def _check_runtime_references(
         self, layers: list[Layer], runtime: dict[str, Any]
@@ -164,6 +196,13 @@ class ConfigService:
                 m = meta(info)
                 if m.get("secret") and m.get("env"):
                     env_names.add(m["env"])
+            # Names a section computes (one API key per LLM profile): kept when
+            # they feed a secret setting.
+            if spec.legacy_env is not None and spec.legacy_env_names:
+                probe = {name: "x" for name in spec.legacy_env_names}
+                for rel, _, name in spec.legacy_env(probe):
+                    if meta(lookup(spec.model, tuple(rel))).get("secret"):
+                        env_names.add(name)
         for layer in layers:
             if layer.name != "file":
                 continue

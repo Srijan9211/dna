@@ -428,3 +428,31 @@ def test_a_tracker_url_must_be_a_plain_http_url(tracker, url):
 def test_a_tracker_url_is_tidied():
     svc = make({}, runtime={"prodtrack": {"ayon": {"url": " http://ayon.test:5000/ "}}})
     assert svc.get("prodtrack").ayon.url == "http://ayon.test:5000"
+
+
+def test_runtime_may_reference_the_documented_per_profile_llm_keys():
+    svc = _runtime_change(
+        {"OPENAI_API_KEY": "sk-from-env"},
+        {"llm": {"profiles": {"openai": {"api_key": "${env:OPENAI_API_KEY}"}}}},
+    )
+    assert svc.get("llm").profiles["openai"].api_key == "sk-from-env"
+
+
+# ── warnings ─────────────────────────────────────────────────────────────────
+
+
+def test_a_plain_secret_in_a_file_is_allowed_but_warned_about(tmp_path):
+    (tmp_path / "site.yaml").write_text(
+        "prodtrack:\n  ayon:\n    api_key: plainvalue\n"
+    )
+    svc = make({}, config_dir=tmp_path)
+    assert svc.get("prodtrack").ayon.api_key == "plainvalue"
+    assert any("prodtrack.ayon.api_key" in w for w in svc.warnings)
+    assert "plainvalue" not in " ".join(svc.warnings)  # never echoes the value
+
+
+def test_a_reference_in_a_file_is_not_warned_about(tmp_path):
+    (tmp_path / "site.yaml").write_text(
+        "prodtrack:\n  ayon:\n    api_key: ${env:AYON_API_KEY}\n"
+    )
+    assert make({"AYON_API_KEY": "k"}, config_dir=tmp_path).warnings == []

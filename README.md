@@ -127,6 +127,12 @@ DNA is built for:
 
 Documentation, including quick start, architecture, and API docs, are available on: [QUICKSTART.md](https://github.com/AcademySoftwareFoundation/dna/blob/main/QUICKSTART.md)
 
+Running and configuring DNA for your studio:
+
+- [Configuration](docs/CONFIGURATION.md): files, environment, secrets, the admin page and CLI ([every setting](docs/CONFIGURATION_REFERENCE.md); [example](config.example/))
+- [Production trackers](docs/CONNECTORS.md): ShotGrid, AYON, adapting a tracker to your studio, writing a new connector
+- [Operations](docs/OPERATIONS.md): go-live checklist, health, security controls, capacity
+
 For information on how to contribute to DNA please visit: [CONTRIBUTING.md](https://github.com/AcademySoftwareFoundation/dna/blob/main/CONTRIBUTING.md)
 
 

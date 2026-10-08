@@ -137,7 +137,7 @@ class AuthSection(Section):
         "none",
         env="AUTH_PROVIDER",
         reload="restart",
-        description="none | google | shotgrid (more are added by connectors).",
+        description="none | google | shotgrid | ayon (more are added by connectors).",
     )
     google_client_id: Optional[str] = setting(None, env="GOOGLE_CLIENT_ID")
     jwt: JwtConfig = setting(default_factory=JwtConfig)

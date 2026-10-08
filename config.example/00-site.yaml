@@ -1,0 +1,47 @@
+# Studio configuration for DNA.  Copy this folder, point DNA_CONFIG_DIR at it, and
+# adjust.  Files load in name order; later files win.  Secrets are references, never
+# values: put the real key in the environment (or a Docker/Kubernetes secret file).
+#
+#   DNA_CONFIG_DIR=/etc/dna python -m dna.config_cli validate
+
+prodtrack:
+  connector: ayon                 # shotgrid | ayon | mock
+  ayon:
+    url: https://ayon.studio.example
+    api_key: ${env:AYON_API_KEY}  # a service user's API key
+  # shotgrid:
+  #   url: https://studio.shotgrid.autodesk.com
+  #   script_name: dna_script
+  #   api_key: ${env:SHOTGRID_API_KEY}
+
+  # Studio-specific mapping of tracker data onto DNA's roles, merged over the
+  # connector's built-in profile.  Only list what differs.
+  # profile:
+  #   labels: {playlist: Review list}
+  #   entities:
+  #     shot:  {where: {folderType: [Shot, Sequence]}}
+  #     asset: {where: {folderType: [Asset, Character, Prop]}}
+
+auth:
+  provider: ayon                  # none | google | shotgrid | ayon
+  jwt:
+    secret_key: ${env:JWT_SECRET_KEY}   # required when auth is on; use a long random value
+
+storage:
+  mongodb_url: ${env:MONGODB_URL}
+  mongodb_db: dna
+
+server:
+  cors_allowed_origins:
+    - https://dna.studio.example
+
+admin:
+  enabled: true
+  admins: [alice, bob]            # tracker logins (AYON/ShotGrid) or emails (Google)
+  persist: true                   # keep admin changes in MongoDB, with history and rollback
+
+# Per-project overrides: only settings marked "project" in the reference.
+# projects:
+#   "my_project":
+#     features:
+#       transcript_publish: true

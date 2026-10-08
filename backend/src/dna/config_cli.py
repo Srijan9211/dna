@@ -52,7 +52,9 @@ def _need_persistence() -> bool:
 
 
 def cmd_validate(_: argparse.Namespace) -> int:
-    configsys.get_config()  # raises ConfigError listing every problem
+    # Raises ConfigError listing every problem.  Warnings (a plain secret in a file)
+    # are logged by the load itself and so appear above this line.
+    configsys.get_config()
     print("Configuration is valid.")
     return 0
 
