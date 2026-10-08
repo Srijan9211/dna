@@ -30,7 +30,7 @@ class DraftNoteBase(BaseModel):
     published: bool = False
     edited: bool = False
     published_at: Optional[datetime] = None
-    published_note_id: Optional[int] = None
+    published_note_id: Optional[EntityId] = None
     attachment_ids: list[str] = Field(default_factory=list)
 
 
@@ -67,5 +67,5 @@ class DraftNoteUpdate(BaseModel):
     published: Optional[bool] = None
     edited: Optional[bool] = None
     published_at: Optional[datetime] = None
-    published_note_id: Optional[int] = None
+    published_note_id: Optional[EntityId] = None
     attachment_ids: Optional[list[str]] = None

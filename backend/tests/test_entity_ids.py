@@ -130,3 +130,23 @@ def test_every_id_parameter_in_the_real_api_accepts_a_string_id():
                 if is_id and param["schema"].get("type") == "integer":
                     offenders.append(f"{method.upper()} {path} ({name})")
     assert not offenders, f"integer-only id parameters: {offenders}"
+
+
+def _only_integer(schema: dict) -> bool:
+    kinds = {schema.get("type")} | {m.get("type") for m in schema.get("anyOf", [])}
+    return "integer" in kinds and "string" not in kinds
+
+
+def test_every_id_field_in_the_api_bodies_accepts_a_string_id():
+    """Request and response bodies too: a tracker id typed ``int`` makes the whole
+    request fail with 422 for an AYON id (this is how /search broke)."""
+    import main
+
+    own = ("vexa_meeting_id", "segment_id", "attachment_id", "limit")
+    offenders = []
+    for model, spec in main.app.openapi()["components"]["schemas"].items():
+        for name, prop in spec.get("properties", {}).items():
+            is_id = (name.endswith("_id") or name == "id") and name not in own
+            if is_id and _only_integer(prop):
+                offenders.append(f"{model}.{name}")
+    assert not offenders, f"integer-only id fields: {offenders}"

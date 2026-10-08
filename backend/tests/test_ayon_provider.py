@@ -149,6 +149,9 @@ class ScriptedAyon:
         if "folders(ids:" in query:
             hit = [x["product"]["folder"] for x in s["versions"].values() if x["product"]["folder"]["id"] in v["ids"]]
             return {"project": {"folders": edges(hit)}}
+        if "tasks(first:" in query:
+            ver = s["versions"]["v1"]
+            return {"project": {"tasks": edges([{**ver["task"], "folder": ver["product"]["folder"]}])}}
         if "tasks(ids:" in query:
             ver = s["versions"]["v1"]
             return {"project": {"tasks": edges([{**ver["task"], "folder": ver["product"]["folder"]}])}}
@@ -329,6 +332,18 @@ def test_search():
     assert p.search("", ["version"], P)[0]["name"] == "sh010_renderLighting_v001"
     with pytest.raises(ValueError, match="Unsupported entity type"):
         p.search("x", ["note"])
+
+
+def test_search_covers_every_type_the_ui_asks_for():
+    """The mention and link pickers search user/shot/asset/version/task together; one
+    unsupported type fails the whole request (400), so each must be answered."""
+    p, _ = provider()
+    got = p.search("", ["user", "shot", "asset", "version", "task"], P)
+    assert {r["type"] for r in got} >= {"User", "Shot", "Version", "Task"}
+    task = next(r for r in got if r["type"] == "Task")
+    assert task["id"].startswith(f"{P}:") and task["project"] == {"type": "Project", "id": P}
+    assert p.search("zzz-no-match", ["task"], P) == []
+    assert all(r["type"] == "Playlist" for r in p.search("", ["playlist"], P))
 
 
 def test_free_form_find_is_refused_with_guidance():

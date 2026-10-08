@@ -939,9 +939,58 @@ class AyonProvider(ProdtrackProviderBase):
             elif entity_type == "version":
                 for project in projects or self._accessible_projects():
                     results += self._search_versions(project, q, limit)
+            elif entity_type == "task":
+                for project in projects or self._accessible_projects():
+                    results += self._search_tasks(project, q, limit)
+            elif entity_type == "playlist":
+                for project in projects or self._accessible_projects():
+                    results += self._search_playlists(project, q, limit)
             else:
                 raise ValueError(f"Unsupported entity type: {entity_type}")
         return results
+
+    def _search_tasks(self, project: str, q: str, limit: int) -> list[dict[str, Any]]:
+        # AYON has no name search on tasks, so read a page and filter here.
+        data = self._c.graphql(
+            "query($p: String!) { project(name: $p) { tasks(first: 500) {"
+            " edges { node { id name label taskType folder { name } } } } } }",
+            {"p": project},
+        )
+        out: list[dict[str, Any]] = []
+        for edge in data.get("project", {}).get("tasks", {}).get("edges", []):
+            node = edge["node"]
+            name = node.get("label") or node.get("name") or ""
+            if q.lower() not in f"{name} {node.get('taskType') or ''}".lower():
+                continue
+            out.append(
+                {
+                    "type": "Task",
+                    "id": make_id(project, node["id"]),
+                    "name": name,
+                    "description": (node.get("folder") or {}).get("name"),
+                    "project": {"type": "Project", "id": project},
+                }
+            )
+            if len(out) >= limit:
+                break
+        return out
+
+    def _search_playlists(self, project: str, q: str, limit: int) -> list[dict[str, Any]]:
+        out = []
+        for playlist in self.get_playlists_for_project(project):
+            if q.lower() in (playlist.code or "").lower():
+                out.append(
+                    {
+                        "type": "Playlist",
+                        "id": playlist.id,
+                        "name": playlist.code,
+                        "description": playlist.description,
+                        "project": {"type": "Project", "id": project},
+                    }
+                )
+            if len(out) >= limit:
+                break
+        return out
 
     def _search_users(self, q: str, limit: int) -> list[dict[str, Any]]:
         sel = build_selection(["name", "active", *self.mapper.binding("user").fields])

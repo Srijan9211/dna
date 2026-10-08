@@ -76,7 +76,7 @@ class SearchRequest(BaseModel):
     entity_types: list[str] = Field(
         description="Entity types to search: user, shot, asset, version, task, playlist"
     )
-    project_id: Optional[int] = Field(
+    project_id: Optional[EntityId] = Field(
         default=None,
         description="Scope results to a specific project (recommended for non-user entities)",
     )
@@ -146,7 +146,7 @@ class UpdateVersionStatusRequest(BaseModel):
     """Request model for updating a version's status."""
 
     status: str = Field(description="Status code to set on the version")
-    playlist_id: Optional[int] = Field(
+    playlist_id: Optional[EntityId] = Field(
         default=None,
         description=(
             "If provided, pending version_status values on this playlist's "
