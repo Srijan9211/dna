@@ -1112,15 +1112,17 @@ class AyonProvider(ProdtrackProviderBase):
         return results
 
     def _search_tasks(self, project: str, q: str, limit: int) -> list[dict[str, Any]]:
-        # AYON has no name search on tasks, so read a page and filter here.
-        data = self._c.graphql(
-            "query($p: String!) { project(name: $p) { tasks(first: 500) {"
-            " edges { node { id name label taskType folder { name } } } } } }",
+        # AYON has no name search on tasks, so read them all (paged) and filter here.
+        nodes = self._c.graphql_all(
+            "query($p: String!, $first: Int, $after: String) { project(name: $p) {"
+            " tasks(first: $first, after: $after) {"
+            " edges { node { id name label taskType folder { name } } }"
+            " pageInfo { hasNextPage endCursor } } } }",
+            ("project", "tasks"),
             {"p": project},
         )
         out: list[dict[str, Any]] = []
-        for edge in data.get("project", {}).get("tasks", {}).get("edges", []):
-            node = edge["node"]
+        for node in nodes:
             name = node.get("label") or node.get("name") or ""
             if q.lower() not in f"{name} {node.get('taskType') or ''}".lower():
                 continue
@@ -1158,13 +1160,15 @@ class AyonProvider(ProdtrackProviderBase):
 
     def _search_users(self, q: str, limit: int) -> list[dict[str, Any]]:
         sel = build_selection(["name", "active", *self.mapper.binding("user").fields])
-        data = self._c.graphql(
-            f"query {{ users(first: 200) {{ edges {{ node {{ {sel} }} }} }} }}"
+        nodes = self._c.graphql_all(
+            "query($first: Int, $after: String) { users(first: $first, after: $after) {"
+            f" edges {{ node {{ {sel} }} }} pageInfo {{ hasNextPage endCursor }} }} }}",
+            ("users",),
         )
         out = []
-        for edge in data.get("users", {}).get("edges", []):
-            user = self._user_entity(edge["node"])
-            if not edge["node"].get("active", True):
+        for node in nodes:
+            user = self._user_entity(node)
+            if not node.get("active", True):
                 continue
             haystack = f"{user.login} {user.name} {user.email or ''}".lower()
             if q.lower() in haystack:

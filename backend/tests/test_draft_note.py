@@ -390,7 +390,7 @@ class TestMongoDBStorageProvider:
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
         mock_db.draft_notes = mock_collection
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         provider._client = mock_client
         return provider
 
@@ -429,7 +429,7 @@ class TestMongoDBStorageProvider:
     def test_db_property(self, provider_with_mock):
         """Test db property returns dna database."""
         db = provider_with_mock.db
-        assert db is provider_with_mock._client.dna
+        assert db is provider_with_mock._client["dna"]
 
     def test_draft_notes_property(self, provider_with_mock, mock_collection):
         """Test draft_notes property returns collection."""

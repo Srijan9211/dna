@@ -74,7 +74,7 @@ class MongoDBStorageProvider(StorageProviderBase):
 
     @property
     def db(self) -> Any:
-        return self.client.dna
+        return self.client[get_config().get("storage").mongodb_db]
 
     @property
     def draft_notes(self) -> Any:

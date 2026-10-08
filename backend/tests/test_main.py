@@ -1375,3 +1375,54 @@ class TestCreatePlaylistEndpoint:
             assert response.status_code == 404
         finally:
             app.dependency_overrides.clear()
+
+
+class TestAyonStartupCheck:
+    @pytest.fixture(autouse=True)
+    def _restore(self):
+        import main as _main
+
+        self.main = _main
+        yield
+        from dna import configsys
+
+        configsys.reset_config()
+
+    def _config(self, monkeypatch, connector="ayon"):
+        from dna import configsys
+
+        monkeypatch.setenv("PRODTRACK_PROVIDER", connector)
+        monkeypatch.setenv("AYON_URL", "http://ayon.test")
+        monkeypatch.setenv("AYON_API_KEY", "key")
+        configsys.reset_config()
+
+    def test_is_skipped_for_other_connectors(self, monkeypatch):
+        self._config(monkeypatch, "mock")
+        assert self.main._verify_ayon_service_key() is True
+
+    def test_passes_when_ayon_accepts_the_key(self, monkeypatch):
+        from unittest.mock import patch
+
+        self._config(monkeypatch)
+        with patch(
+            "dna.prodtrack_providers.ayon_client.AyonClient.rest", return_value={}
+        ):
+            assert self.main._verify_ayon_service_key() is True
+
+    def test_fails_without_crashing_when_ayon_rejects_it(self, monkeypatch):
+        from unittest.mock import patch
+
+        from dna.prodtrack_providers.prodtrack_provider_base import ProdtrackAuthError
+
+        self._config(monkeypatch)
+        with patch(
+            "dna.prodtrack_providers.ayon_client.AyonClient.rest",
+            side_effect=ProdtrackAuthError("rejected"),
+        ):
+            assert self.main._verify_ayon_service_key() is False
+
+    def test_health_reports_a_failed_ayon_check(self, monkeypatch):
+        monkeypatch.setitem(self.main._startup_checks, "ayon", False)
+        response = client.get("/health")
+        assert response.status_code == 503
+        assert response.json()["ayon"] is False

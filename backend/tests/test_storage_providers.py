@@ -222,7 +222,7 @@ class TestMongoDBStorageProvider:
         """Test db property returns dna database."""
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         provider._client = mock_client
 
         assert provider.db is mock_db
@@ -232,7 +232,7 @@ class TestMongoDBStorageProvider:
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
         mock_collection = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.draft_notes = mock_collection
         provider._client = mock_client
 
@@ -243,7 +243,7 @@ class TestMongoDBStorageProvider:
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
         mock_collection = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.playlist_metadata = mock_collection
         provider._client = mock_client
 
@@ -254,7 +254,7 @@ class TestMongoDBStorageProvider:
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
         mock_collection = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.segments = mock_collection
         provider._client = mock_client
 
@@ -307,7 +307,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.draft_notes = mock_collection
         provider._client = mock_client
 
@@ -340,7 +340,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.draft_notes = mock_collection
         provider._client = mock_client
 
@@ -358,7 +358,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.draft_notes = mock_collection
         provider._client = mock_client
 
@@ -386,7 +386,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.draft_notes = mock_collection
         provider._client = mock_client
 
@@ -419,7 +419,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.draft_notes = mock_collection
         provider._client = mock_client
 
@@ -453,7 +453,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.draft_notes = mock_collection
         provider._client = mock_client
 
@@ -471,7 +471,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.draft_notes = mock_collection
         provider._client = mock_client
 
@@ -495,7 +495,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.playlist_metadata = mock_collection
         provider._client = mock_client
 
@@ -512,7 +512,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.playlist_metadata = mock_collection
         provider._client = mock_client
 
@@ -536,7 +536,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.playlist_metadata = mock_collection
         provider._client = mock_client
 
@@ -553,7 +553,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.playlist_metadata = mock_collection
         provider._client = mock_client
 
@@ -578,7 +578,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.playlist_metadata = mock_collection
         provider._client = mock_client
 
@@ -613,7 +613,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.playlist_metadata = mock_collection
         provider._client = mock_client
 
@@ -648,7 +648,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.playlist_metadata = mock_collection
         provider._client = mock_client
 
@@ -669,7 +669,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.playlist_metadata = mock_collection
         provider._client = mock_client
 
@@ -687,7 +687,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.playlist_metadata = mock_collection
         provider._client = mock_client
 
@@ -719,7 +719,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.segments = mock_collection
         provider._client = mock_client
 
@@ -766,7 +766,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.segments = mock_collection
         provider._client = mock_client
 
@@ -826,7 +826,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.segments = mock_collection
         provider._client = mock_client
 
@@ -843,7 +843,7 @@ class TestMongoDBStorageProvider:
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
         mock_collection = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.published_transcripts = mock_collection
         provider._client = mock_client
 
@@ -870,7 +870,7 @@ class TestMongoDBStorageProvider:
         mock_collection.find_one = mock.AsyncMock(return_value=doc)
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.published_transcripts = mock_collection
         provider._client = mock_client
 
@@ -889,7 +889,7 @@ class TestMongoDBStorageProvider:
         mock_collection.find_one = mock.AsyncMock(return_value=None)
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.published_transcripts = mock_collection
         provider._client = mock_client
 
@@ -918,7 +918,7 @@ class TestMongoDBStorageProvider:
         mock_collection.find_one_and_update = mock.AsyncMock(return_value=result_doc)
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.published_transcripts = mock_collection
         provider._client = mock_client
 
@@ -987,7 +987,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.qc_checks = mock_qc
         provider._client = mock_client
 
@@ -1034,7 +1034,7 @@ class TestMongoDBStorageProvider:
 
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         mock_db.qc_checks = mock_qc
         provider._client = mock_client
 
@@ -1044,3 +1044,18 @@ class TestMongoDBStorageProvider:
         assert isinstance(result[0], NoteQCCheck)
         assert result[0].name == "Custom"
         mock_qc.find_one_and_update.assert_not_called()
+
+
+def test_the_database_name_comes_from_configuration(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from dna import configsys
+    from dna.storage_providers.mongodb import MongoDBStorageProvider
+
+    monkeypatch.setenv("MONGODB_DB", "studio_dna")
+    configsys.reset_config()
+    provider = MongoDBStorageProvider()
+    provider._client = MagicMock()
+    provider.db
+    provider._client.__getitem__.assert_called_with("studio_dna")
+    configsys.reset_config()

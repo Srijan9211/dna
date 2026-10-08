@@ -115,3 +115,23 @@ def test_the_unreachable_message_does_not_leak_the_internal_address():
 def test_the_default_session_has_a_pool_sized_for_concurrent_requests():
     c = AyonClient("http://ayon.test", "key")
     assert c._session.get_adapter("http://ayon.test")._pool_maxsize == 50
+
+
+def test_graphql_all_follows_every_page():
+    def page(nodes, nxt):
+        return FakeResponse(
+            200,
+            {
+                "data": {
+                    "users": {
+                        "edges": [{"node": n} for n in nodes],
+                        "pageInfo": {"hasNextPage": bool(nxt), "endCursor": nxt},
+                    }
+                }
+            },
+        )
+
+    c, s = client(page([{"n": 1}, {"n": 2}], "c1"), page([{"n": 3}], None))
+    got = c.graphql_all("query($first: Int, $after: String) { users }", ("users",))
+    assert [n["n"] for n in got] == [1, 2, 3]
+    assert s.calls[1][2]["json"]["variables"]["after"] == "c1"

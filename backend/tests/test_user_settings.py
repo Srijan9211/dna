@@ -345,7 +345,7 @@ class TestMongoDBUserSettingsProvider:
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
         mock_db.user_settings = mock_collection
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         provider._client = mock_client
         return provider
 

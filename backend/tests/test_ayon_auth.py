@@ -457,3 +457,41 @@ def test_cors_credentials_are_enabled_for_ayon_login_too(monkeypatch):
     assert kwargs["allow_credentials"] is True and kwargs["allow_origins"] == [
         "https://dna.example"
     ]
+
+
+# ── login throttling ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def throttled(api):
+    from dna.auth.throttle import reset_login_throttle
+
+    reset_login_throttle()
+    yield api[0]
+    reset_login_throttle()
+
+
+def attempt(client, password):
+    return client.post("/auth/login", json={"username": "bob", "password": password})
+
+
+def test_the_route_locks_out_after_repeated_failures_and_says_when_to_retry(throttled):
+    for _ in range(10):
+        assert attempt(throttled, "wrong").status_code == 401
+    locked = attempt(throttled, "wrong")
+    assert locked.status_code == 429
+    assert int(locked.headers["retry-after"]) > 0
+    # even the right password waits: otherwise the lock would not stop guessing
+    assert attempt(throttled, "right").status_code == 429
+
+
+def test_a_correct_login_is_never_throttled_for_a_user_who_has_not_failed(throttled):
+    assert attempt(throttled, "right").status_code == 200
+
+
+def test_the_throttle_can_be_turned_off(throttled, monkeypatch):
+    configsys.get_config().apply_overrides(
+        {"auth": {"login_throttle": {"enabled": False}}}, allow_locked=True
+    )
+    for _ in range(12):
+        assert attempt(throttled, "wrong").status_code == 401

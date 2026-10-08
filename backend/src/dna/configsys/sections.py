@@ -92,6 +92,17 @@ class SessionConfig(Section):
     )
 
 
+class LoginThrottleConfig(Section):
+    enabled: bool = setting(True, reload="restart")
+    max_failures: int = setting(
+        10,
+        ge=1,
+        description="Failed password attempts allowed per address and user name "
+        "within the window (three times as many per user name alone).",
+    )
+    window_seconds: float = setting(300.0, gt=0)
+
+
 class RefreshCookieConfig(Section):
     samesite: str = setting(
         "strict",
@@ -131,6 +142,7 @@ class AuthSection(Section):
     google_client_id: Optional[str] = setting(None, env="GOOGLE_CLIENT_ID")
     jwt: JwtConfig = setting(default_factory=JwtConfig)
     session: SessionConfig = setting(default_factory=SessionConfig)
+    login_throttle: LoginThrottleConfig = setting(default_factory=LoginThrottleConfig)
     refresh_cookie: RefreshCookieConfig = setting(default_factory=RefreshCookieConfig)
 
     @field_validator("provider")

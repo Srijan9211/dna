@@ -295,14 +295,14 @@ class TestMongoDBPlaylistMetadataProvider:
         mock_client = mock.MagicMock()
         mock_db = mock.MagicMock()
         mock_db.playlist_metadata = mock_collection
-        mock_client.dna = mock_db
+        mock_client.__getitem__.return_value = mock_db
         provider._client = mock_client
         return provider
 
     def test_playlist_metadata_collection_property(self, provider_with_mock):
         """Test playlist_metadata_collection property returns collection."""
         collection = provider_with_mock.playlist_metadata_collection
-        assert collection is provider_with_mock._client.dna.playlist_metadata
+        assert collection is provider_with_mock._client["dna"].playlist_metadata
 
     @pytest.mark.asyncio
     async def test_get_playlist_metadata_returns_metadata(

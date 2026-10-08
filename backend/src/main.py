@@ -254,6 +254,31 @@ def _verify_shotgrid_script_credentials() -> bool:
     return True
 
 
+def _verify_ayon_service_key() -> bool:
+    """Confirm DNA's AYON service key works (the AYON counterpart of the ShotGrid
+    script-credential check).  Every user request reaches AYON through this key."""
+    cfg = get_config().get("prodtrack")
+    if cfg.connector != "ayon":
+        return True
+    try:
+        from dna.prodtrack_providers.ayon_client import AyonClient
+
+        AyonClient(
+            cfg.ayon.url or "",
+            cfg.ayon.api_key or "",
+            timeout=cfg.startup_check_timeout,
+        ).rest("GET", "/api/users/me")
+    except Exception as exc:
+        logger.critical(
+            "AYON service key failed verification: %s. Every request reaches AYON "
+            "through it, so they will fail. Check AYON_URL and AYON_API_KEY.",
+            exc,
+        )
+        return False
+    logger.info("AYON service key verified.")
+    return True
+
+
 def _warn_if_media_links_are_unstable() -> None:
     """Signed media links need the same key in every worker and across restarts."""
     from dna.configsys import providers
@@ -294,6 +319,8 @@ async def lifespan(_app: FastAPI):
         )
         _startup_checks["shotgrid"] = False
 
+    if get_config().get("prodtrack").connector == "ayon":
+        _startup_checks["ayon"] = await asyncio.to_thread(_verify_ayon_service_key)
     _warn_if_media_links_are_unstable()
 
     service = get_transcription_service()
@@ -682,8 +709,9 @@ def health(response: Response):
             logger.warning("Health check: MongoDB unreachable: %s", exc)
             checks["mongo"] = False
 
-    if "shotgrid" in _startup_checks:
-        checks["shotgrid"] = _startup_checks["shotgrid"]
+    for name in ("shotgrid", "ayon"):
+        if name in _startup_checks:
+            checks[name] = _startup_checks[name]
 
     healthy = all(checks.values())
     if not healthy:
@@ -797,7 +825,7 @@ def _has_csrf_header(request: Request) -> bool:
     tags=["Auth"],
     summary="Standalone login — tracker username + password",
 )
-def auth_login(body: LoginRequest, auth_provider: AuthProviderDep):
+def auth_login(body: LoginRequest, request: Request, auth_provider: AuthProviderDep):
     """Log in with the tracker's username + password (ShotGrid Legacy Password, or AYON).
 
     Returns a short-lived access token in the body and sets the refresh token as
@@ -809,6 +837,18 @@ def auth_login(body: LoginRequest, auth_provider: AuthProviderDep):
     if provider is None:
         configured = get_config().get("auth").provider
         return {"message": f"Provider '{configured}': supply Bearer token directly."}
+    from dna.auth.throttle import get_login_throttle
+
+    throttle = get_login_throttle()
+    address = request.client.host if request.client else "unknown"
+    if throttle is not None:
+        wait = throttle.retry_after(address, body.username)
+        if wait:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many failed sign-in attempts. Try again later.",
+                headers={"Retry-After": str(wait)},
+            )
     try:
         result = provider.login(username=body.username, password=body.password)
     except AuthBackendUnavailable as exc:
@@ -821,7 +861,11 @@ def auth_login(body: LoginRequest, auth_provider: AuthProviderDep):
             detail=f"{provider.TRACKER_NAME} is unavailable right now. Please try again shortly.",
         )
     except ValueError as exc:
+        if throttle is not None:
+            throttle.failed(address, body.username)
         raise HTTPException(status_code=401, detail=str(exc))
+    if throttle is not None:
+        throttle.succeeded(address, body.username)
     return _auth_response(result.body, result.refresh_cookie)
 
 
